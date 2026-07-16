@@ -1,0 +1,10 @@
+{
+  "name": "Zentex",
+  "description": "Sistema de gestão de equipes externas, ordens de serviço, registro de ponto e localização em tempo real.",
+  "requestFramePermissions": [
+    "geolocation"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

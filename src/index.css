@@ -1,0 +1,174 @@
+@import "tailwindcss";
+
+/* Smooth scaling transition for font size updates */
+html {
+  transition: font-size 0.2s ease-in-out;
+}
+
+/* Base Accessibility focus styling */
+*:focus-visible {
+  outline: 3px solid #059669 !important; /* emerald-600 */
+  outline-offset: 3px !important;
+  border-radius: 4px;
+}
+
+/* ==========================================================================
+   DARK THEME OVERRIDES (Acessibilidade Visual / Noite de Campo)
+   ========================================================================== */
+.dark-theme,
+.dark-theme body,
+.dark-theme .bg-white,
+.dark-theme .bg-slate-50 {
+  background-color: #0a0f1d !important;
+  color: #e2e8f0 !important;
+}
+
+.dark-theme .bg-slate-50\/30,
+.dark-theme .bg-slate-50\/50,
+.dark-theme .bg-slate-100,
+.dark-theme .bg-slate-100\/50,
+.dark-theme .bg-emerald-50\/50,
+.dark-theme .bg-slate-100\/40 {
+  background-color: #131b2e !important;
+}
+
+.dark-theme select,
+.dark-theme input,
+.dark-theme textarea {
+  background-color: #131b2e !important;
+  color: #f8fafc !important;
+  border-color: #334155 !important;
+}
+
+.dark-theme .border-slate-100,
+.dark-theme .border-slate-150,
+.dark-theme .border-slate-200,
+.dark-theme .border-slate-250,
+.dark-theme .border-slate-300,
+.dark-theme .border-slate-200\/80 {
+  border-color: #1e293b !important;
+}
+
+.dark-theme .text-slate-900,
+.dark-theme .text-slate-800,
+.dark-theme .text-slate-700 {
+  color: #f8fafc !important;
+}
+
+.dark-theme .text-slate-600,
+.dark-theme .text-slate-500,
+.dark-theme .text-slate-400 {
+  color: #94a3b8 !important;
+}
+
+.dark-theme header,
+.dark-theme footer {
+  background-color: #111827 !important;
+  border-color: #1e293b !important;
+}
+
+.dark-theme .hover\:bg-slate-50:hover,
+.dark-theme .hover\:bg-slate-100\/50:hover,
+.dark-theme .hover\:bg-slate-100:hover {
+  background-color: #1e293b !important;
+}
+
+.dark-theme canvas {
+  background-color: #0a0f1d !important;
+  border-color: #334155 !important;
+}
+
+/* ==========================================================================
+   HIGH CONTRAST AAA OVERRIDES (Preto & Branco / Alto Contraste)
+   ========================================================================== */
+.contrast-theme,
+.contrast-theme body,
+.contrast-theme .bg-white,
+.contrast-theme .bg-slate-50,
+.contrast-theme .bg-slate-50\/30,
+.contrast-theme .bg-slate-50\/50,
+.contrast-theme .bg-slate-100,
+.contrast-theme .bg-slate-100\/50,
+.contrast-theme .bg-emerald-50\/50,
+.contrast-theme .bg-slate-100\/40 {
+  background-color: #000000 !important;
+  color: #ffffff !important;
+}
+
+.contrast-theme *:focus-visible {
+  outline: 4px solid #ffff00 !important; /* Neon Yellow outline */
+  outline-offset: 4px !important;
+}
+
+.contrast-theme select,
+.contrast-theme input,
+.contrast-theme textarea {
+  background-color: #000000 !important;
+  color: #ffffff !important;
+  border: 2px solid #ffffff !important;
+}
+
+.contrast-theme .border-slate-100,
+.contrast-theme .border-slate-150,
+.contrast-theme .border-slate-200,
+.contrast-theme .border-slate-250,
+.contrast-theme .border-slate-300,
+.contrast-theme .border {
+  border-color: #ffffff !important;
+  border-width: 2px !important;
+}
+
+.contrast-theme .text-slate-900,
+.contrast-theme .text-slate-800,
+.contrast-theme .text-slate-700,
+.contrast-theme .text-slate-600,
+.contrast-theme .text-slate-500,
+.contrast-theme .text-slate-400 {
+  color: #ffffff !important;
+}
+
+.contrast-theme .text-emerald-700,
+.contrast-theme .text-emerald-600,
+.contrast-theme .text-amber-700,
+.contrast-theme .text-rose-700 {
+  color: #ffff00 !important; /* High contrast bright yellow for key actions */
+  font-weight: 900 !important;
+}
+
+.contrast-theme .bg-emerald-50,
+.contrast-theme .bg-emerald-600,
+.contrast-theme .bg-amber-50,
+.contrast-theme .bg-rose-50 {
+  background-color: #000000 !important;
+  border: 2.5px solid #ffff00 !important;
+}
+
+.contrast-theme .hover\:bg-slate-50:hover,
+.contrast-theme .hover\:bg-slate-100\/50:hover,
+.contrast-theme .hover\:bg-slate-100:hover {
+  background-color: #262626 !important;
+  border-color: #ffff00 !important;
+}
+
+.contrast-theme header,
+.contrast-theme footer {
+  background-color: #000000 !important;
+  border-color: #ffffff !important;
+}
+
+.contrast-theme canvas {
+  background-color: #ffffff !important;
+  border: 2px solid #ffffff !important;
+}
+
+/* Extra bold text for accessibility reading */
+.contrast-theme p,
+.contrast-theme span,
+.contrast-theme h1,
+.contrast-theme h2,
+.contrast-theme h3,
+.contrast-theme h4,
+.contrast-theme h5,
+.contrast-theme h6 {
+  font-weight: 600 !important;
+}
