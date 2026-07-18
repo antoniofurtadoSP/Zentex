@@ -1,4 +1,4 @@
-export type Role = 'admin' | 'employee';
+export type Role = 'admin' | 'employee' | 'client';
 
 export interface User {
   id: string;
@@ -11,6 +11,14 @@ export interface User {
   lastLatitude?: number;
   lastLongitude?: number;
   lastLocationUpdate?: string;
+  password?: string;
+  isTemporaryPassword?: boolean;
+  address?: string;         // Endereço Residencial
+  documentId?: string;      // CPF ou RG
+  birthDate?: string;       // Data de Nascimento
+  admissionDate?: string;   // Data de Admissão
+  notes?: string;           // Observações/Anotações internas
+  gender?: 'male' | 'female' | 'neutral'; // Gênero: masculino, feminino, neutro
 }
 
 export type OSStatus = 'aberta' | 'em_andamento' | 'pausada' | 'concluida' | 'cancelada';
@@ -39,6 +47,10 @@ export interface ServiceOrder {
   startLongitude?: number;
   endLatitude?: number;
   endLongitude?: number;
+  price?: number;
+  paymentStatus?: 'pendente' | 'pago' | 'reembolsado';
+  paymentMethod?: 'cartao_credito' | 'cartao_debito' | 'pix';
+  paymentDate?: string;
 }
 
 export interface ChatMessage {

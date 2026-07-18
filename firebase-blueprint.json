@@ -1,0 +1,115 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profiles for admins, employees, and clients",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "employee", "client"] },
+        "phone": { "type": "string" },
+        "avatar": { "type": "string" },
+        "status": { "type": "string", "enum": ["working", "idle", "offline"] },
+        "lastLatitude": { "type": "number" },
+        "lastLongitude": { "type": "number" },
+        "lastLocationUpdate": { "type": "string" },
+        "password": { "type": "string" },
+        "isTemporaryPassword": { "type": "boolean" },
+        "address": { "type": "string" },
+        "documentId": { "type": "string" },
+        "birthDate": { "type": "string" },
+        "admissionDate": { "type": "string" },
+        "notes": { "type": "string" },
+        "gender": { "type": "string", "enum": ["male", "female", "neutral"] }
+      },
+      "required": ["id", "name", "email", "role", "status"]
+    },
+    "ServiceOrder": {
+      "title": "ServiceOrder",
+      "description": "Service Orders created and assigned to employees",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "clientName": { "type": "string" },
+        "clientAddress": { "type": "string" },
+        "clientPhone": { "type": "string" },
+        "priority": { "type": "string", "enum": ["baixa", "media", "alta"] },
+        "status": { "type": "string", "enum": ["aberta", "em_andamento", "pausada", "concluida", "cancelada"] },
+        "assignedEmployeeId": { "type": "string" },
+        "assignedEmployeeName": { "type": "string" },
+        "createdBy": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "startedAt": { "type": "string" },
+        "pausedAt": { "type": "string" },
+        "completedAt": { "type": "string" },
+        "pauseReason": { "type": "string" },
+        "completionNotes": { "type": "string" },
+        "completionSignature": { "type": "string" },
+        "startLatitude": { "type": "number" },
+        "startLongitude": { "type": "number" },
+        "endLatitude": { "type": "number" },
+        "endLongitude": { "type": "number" },
+        "price": { "type": "number" },
+        "paymentStatus": { "type": "string", "enum": ["pendente", "pago", "reembolsado"] },
+        "paymentMethod": { "type": "string", "enum": ["cartao_credito", "cartao_debito", "pix"] },
+        "paymentDate": { "type": "string" }
+      },
+      "required": ["id", "title", "description", "clientName", "clientAddress", "priority", "status", "createdBy", "createdAt"]
+    },
+    "ChatMessage": {
+      "title": "ChatMessage",
+      "description": "Real-time communication message",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "senderId": { "type": "string" },
+        "senderName": { "type": "string" },
+        "senderRole": { "type": "string", "enum": ["admin", "employee", "client"] },
+        "receiverId": { "type": "string" },
+        "text": { "type": "string" },
+        "timestamp": { "type": "string" }
+      },
+      "required": ["id", "senderId", "senderName", "senderRole", "text", "timestamp"]
+    },
+    "TimeCard": {
+      "title": "TimeCard",
+      "description": "Clock in and clock out log for an employee",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "employeeId": { "type": "string" },
+        "employeeName": { "type": "string" },
+        "date": { "type": "string" },
+        "clockIn": { "type": "string" },
+        "clockOut": { "type": "string" },
+        "latitudeIn": { "type": "number" },
+        "longitudeIn": { "type": "number" },
+        "latitudeOut": { "type": "number" },
+        "longitudeOut": { "type": "number" }
+      },
+      "required": ["id", "employeeId", "employeeName", "date", "clockIn"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": "User",
+      "description": "Collection of system user profiles"
+    },
+    "orders/{orderId}": {
+      "schema": "ServiceOrder",
+      "description": "Collection of service orders"
+    },
+    "chats/{chatId}": {
+      "schema": "ChatMessage",
+      "description": "Collection of chat messages"
+    },
+    "timecards/{timecardId}": {
+      "schema": "TimeCard",
+      "description": "Collection of employees timecard entries"
+    }
+  }
+}

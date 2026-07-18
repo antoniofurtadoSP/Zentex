@@ -1,0 +1,2246 @@
+import React, { useState, useEffect } from 'react';
+import { 
+  Clipboard, Send, Clock, User, Phone, MapPin, CheckCircle, 
+  AlertCircle, Sparkles, MessageSquare, 
+  Map, UserCheck, ShieldAlert, Eye, Settings, FileText, ChevronRight, X, Image,
+  Zap, Home, Building, Check, CreditCard, Smartphone, Lock, Copy
+} from 'lucide-react';
+import { User as UserType, ServiceOrder, ChatMessage, OSPriority } from '../types';
+import { getAvatarUrl } from '../utils';
+
+interface ServicePackage {
+  id: string;
+  name: string;
+  price: string;
+  badge: string;
+  badgeColor: string;
+  icon: string;
+  description: string;
+  features: string[];
+  duration: string;
+}
+
+const SERVICE_PACKAGES: ServicePackage[] = [
+  {
+    id: 'pkg-com-express',
+    name: 'Limpeza Comercial Express',
+    price: 'R$ 190,00',
+    badge: 'Mais Popular',
+    badgeColor: 'from-emerald-500 to-teal-500',
+    icon: 'Building',
+    description: 'Higienização rápida de salas comerciais e escritórios pequenos de até 60m².',
+    features: [
+      'Remoção de pó de mesas, teclados e monitores',
+      'Esvaziamento de lixeiras com troca de sacos',
+      'Varrição, aspiração de carpetes e pano úmido',
+      'Limpeza de copa/cozinha básica e banheiros'
+    ],
+    duration: '2h - 3h'
+  },
+  {
+    id: 'pkg-res-deep',
+    name: 'Limpeza Residencial Profunda',
+    price: 'R$ 290,00',
+    badge: 'Premium',
+    badgeColor: 'from-blue-500 to-indigo-500',
+    icon: 'Home',
+    description: 'Limpeza completa, minuciosa e higienização geral de casas ou apartamentos de até 100m².',
+    features: [
+      'Limpeza profunda de azulejos e box de banheiros',
+      'Desinfecção de louças sanitárias e pias',
+      'Higienização externa de eletrodomésticos da cozinha',
+      'Arrumação de camas e aspiração de estofados'
+    ],
+    duration: '4h - 5h'
+  },
+  {
+    id: 'pkg-pos-obra',
+    name: 'Limpeza Pós-Obra Master',
+    price: 'R$ 790,00',
+    badge: 'Heavy Duty',
+    badgeColor: 'from-amber-500 to-orange-500',
+    icon: 'Zap',
+    description: 'Remoção profissional de poeira fina, gesso, respingos de tinta e cimento pós-reforma (até 120m²).',
+    features: [
+      'Remoção de poeira de gesso suspensa no teto/paredes',
+      'Limpeza técnica de vidros, esquadrias e trilhos',
+      'Lavagem pesada de pisos e azulejos com produtos específicos',
+      'Descarte adequado de pequenos entulhos e detritos'
+    ],
+    duration: '6h - 8h (1-2 técnicos)'
+  },
+  {
+    id: 'pkg-vidros',
+    name: 'Limpeza de Vidros & Vitrines',
+    price: 'R$ 160,00',
+    badge: 'Especializado',
+    badgeColor: 'from-purple-500 to-pink-500',
+    icon: 'Clipboard',
+    description: 'Limpeza e polimento técnico interno/externo de vidraças e vitrines térreas de até 30m².',
+    features: [
+      'Remoção de manchas de chuva ácida e poeira incrustada',
+      'Limpeza profissional com rodo e produtos hidrofóbicos',
+      'Polimento sem deixar marcas ou fiapos',
+      'Limpeza dos caixilhos e borrachas de vedação'
+    ],
+    duration: '1h - 2h'
+  },
+  {
+    id: 'pkg-sanitizacao',
+    name: 'Sanitização de Ambientes',
+    price: 'R$ 380,00',
+    badge: 'Proteção Total',
+    badgeColor: 'from-cyan-500 to-teal-500',
+    icon: 'CheckCircle',
+    description: 'Higienização química profunda com pulverização a frio contra ácaros, fungos, vírus e bactérias.',
+    features: [
+      'Aplicação de quaternário de amônio de 5ª geração',
+      'Ideal para clínicas, escritórios e residências (até 150m²)',
+      'Laudo técnico de sanitização pós-aplicação',
+      'Tecnologia segura para pets e pessoas alérgicas'
+    ],
+    duration: '1h - 1.5h'
+  }
+];
+
+const getPackageIcon = (iconName: string) => {
+  switch (iconName) {
+    case 'Building': return <Building className="w-5 h-5 text-emerald-600" />;
+    case 'Home': return <Home className="w-5 h-5 text-emerald-600" />;
+    case 'Zap': return <Zap className="w-5 h-5 text-emerald-600" />;
+    case 'Clipboard': return <Clipboard className="w-5 h-5 text-emerald-600" />;
+    case 'CheckCircle': return <CheckCircle className="w-5 h-5 text-emerald-600" />;
+    default: return <Sparkles className="w-5 h-5 text-emerald-600" />;
+  }
+};
+
+interface ClientDashboardProps {
+  currentUser: UserType;
+  users: UserType[];
+  orders: ServiceOrder[];
+  messages: ChatMessage[];
+  onCreateOrder: (orderData: Partial<ServiceOrder>) => Promise<void>;
+  onSendMessage: (text: string, receiverId?: string) => Promise<void>;
+  onRefreshData: () => Promise<void>;
+}
+
+export default function ClientDashboard({
+  currentUser,
+  users,
+  orders,
+  messages,
+  onCreateOrder,
+  onSendMessage,
+  onRefreshData
+}: ClientDashboardProps) {
+  const [activeTab, setActiveTab] = useState<'request' | 'my-orders' | 'chat' | 'profile'>('request');
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [priority, setPriority] = useState<OSPriority>('media');
+  const [address, setAddress] = useState(currentUser.address || '');
+  const [phone, setPhone] = useState(currentUser.phone || '');
+  const [submitting, setSubmitting] = useState(false);
+
+  // Payment state variables
+  const [selectedPayMethod, setSelectedPayMethod] = useState<'pix' | 'credit' | 'debit' | null>(null);
+  const [cardName, setCardName] = useState('');
+  const [cardNumber, setCardNumber] = useState('');
+  const [cardExpiry, setCardExpiry] = useState('');
+  const [cardCVV, setCardCVV] = useState('');
+  const [isPaying, setIsPaying] = useState(false);
+  const [hasCopiedPix, setHasCopiedPix] = useState(false);
+  const [showReceiptOrder, setShowReceiptOrder] = useState<ServiceOrder | null>(null);
+  const [checkoutOrder, setCheckoutOrder] = useState<ServiceOrder | null>(null);
+  const [checkoutMethod, setCheckoutMethod] = useState<'pix' | 'card'>('pix');
+  const [checkoutPixData, setCheckoutPixData] = useState<{ pixCopiaECola: string, qrcodeImageUrl?: string, qrcodeImageBase64?: string, txid: string, isDemo: boolean } | null>(null);
+  const [checkoutCardName, setCheckoutCardName] = useState('');
+  const [checkoutCardNumber, setCheckoutCardNumber] = useState('');
+  const [checkoutCardExpiry, setCheckoutCardExpiry] = useState('');
+  const [checkoutCardCVV, setCheckoutCardCVV] = useState('');
+  const [checkoutCardCpf, setCheckoutCardCpf] = useState('');
+  const [checkoutCardEmail, setCheckoutCardEmail] = useState(currentUser.email || '');
+  const [checkoutInstallments, setCheckoutInstallments] = useState(1);
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const [checkoutSuccess, setCheckoutSuccess] = useState(false);
+
+  // Fetch real Pix data from Efí Bank when checkout is opened
+  useEffect(() => {
+    if (!checkoutOrder) {
+      setCheckoutPixData(null);
+      setCheckoutError(null);
+      setCheckoutSuccess(false);
+      return;
+    }
+
+    if (checkoutMethod === 'pix' && !checkoutPixData && !checkoutLoading) {
+      const fetchPix = async () => {
+        setCheckoutLoading(true);
+        setCheckoutError(null);
+        try {
+          const res = await fetch('/api/payment/efi/create-pix', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              orderId: checkoutOrder.id,
+              amount: checkoutOrder.price,
+              clientName: currentUser.name,
+              clientCpf: checkoutCardCpf // can use CPF if available or leave empty
+            })
+          });
+
+          const data = await res.json();
+          if (!res.ok) {
+            throw new Error(data.details || data.error || 'Erro ao gerar cobrança Pix.');
+          }
+
+          setCheckoutPixData(data);
+          if ((window as any).zentexSpeakForce) {
+            (window as any).zentexSpeakForce('Pix gerado com sucesso via Efí Bank!');
+          }
+        } catch (err: any) {
+          console.error(err);
+          setCheckoutError(err.message || 'Erro de conexão ou escopo de API mTLS com a Efí.');
+        } finally {
+          setCheckoutLoading(false);
+        }
+      };
+
+      fetchPix();
+    }
+  }, [checkoutOrder, checkoutMethod]);
+
+  const handleConfirmPixPayment = async () => {
+    if (!checkoutOrder) return;
+    setCheckoutLoading(true);
+    setCheckoutError(null);
+    try {
+      // Update order status to paid (paymentStatus 'pago')
+      const res = await fetch(`/api/orders/${checkoutOrder.id}/status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          paymentStatus: 'pago',
+          paymentMethod: 'pix'
+        })
+      });
+
+      if (!res.ok) throw new Error('Erro ao registrar liquidação.');
+
+      setCheckoutSuccess(true);
+      if ((window as any).zentexSpeakForce) {
+        (window as any).zentexSpeakForce('Pagamento Pix liquidado com sucesso!');
+      }
+      setTimeout(() => {
+        setCheckoutOrder(null);
+        onRefreshData();
+      }, 2500);
+    } catch (err: any) {
+      setCheckoutError(err.message || 'Erro ao liquidar pagamento.');
+    } finally {
+      setCheckoutLoading(false);
+    }
+  };
+
+  const handleConfirmCardPayment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!checkoutOrder) return;
+    
+    if (!checkoutCardName || !checkoutCardNumber || !checkoutCardExpiry || !checkoutCardCVV || !checkoutCardCpf) {
+      alert('Por favor, preencha todos os campos do cartão.');
+      return;
+    }
+
+    setCheckoutLoading(true);
+    setCheckoutError(null);
+
+    try {
+      // Simulate gateway auth delay
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      // Update order status to paid
+      const res = await fetch(`/api/orders/${checkoutOrder.id}/status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          paymentStatus: 'pago',
+          paymentMethod: 'credit'
+        })
+      });
+
+      if (!res.ok) throw new Error('Erro ao registrar liquidação.');
+
+      setCheckoutSuccess(true);
+      if ((window as any).zentexSpeakForce) {
+        (window as any).zentexSpeakForce('Pagamento autorizado com sucesso!');
+      }
+      setTimeout(() => {
+        setCheckoutOrder(null);
+        onRefreshData();
+      }, 2500);
+    } catch (err: any) {
+      setCheckoutError(err.message || 'Erro ao processar cartão.');
+    } finally {
+      setCheckoutLoading(false);
+    }
+  };
+  
+  // Profile settings
+  const [profileName, setProfileName] = useState(currentUser.name);
+  const [profilePhone, setProfilePhone] = useState(currentUser.phone || '');
+  const [profileAddress, setProfileAddress] = useState(currentUser.address || '');
+  const [profileAvatar, setProfileAvatar] = useState(currentUser.avatar || '');
+  const [saveSuccess, setSaveSuccess] = useState(false);
+
+  // Chat operational states
+  const [chatText, setChatText] = useState('');
+  const [chatMode, setChatMode] = useState<'manager' | 'bot'>('bot');
+  const [botMessages, setBotMessages] = useState<any[]>([
+    {
+      id: 'bot_welcome',
+      senderId: 'zentex_bot',
+      senderName: 'Zentex Bot',
+      senderRole: 'bot',
+      text: 'Olá! Sou o Zentex Bot, seu assistente virtual de atendimento operacional. 🤖✨\n\nEstou aqui para esclarecer suas dúvidas sobre nossos serviços de Limpeza e Conservação, mostrar nossos pacotes com preços fixos ou ajudá-lo a abrir uma solicitação.\n\nComo posso ajudar você hoje?',
+      timestamp: new Date().toISOString()
+    }
+  ]);
+  const [isBotTyping, setIsBotTyping] = useState(false);
+
+  // Selected order for tracking radar
+  const [trackingOrder, setTrackingOrder] = useState<ServiceOrder | null>(null);
+
+  // Filter client's orders
+  const clientOrders = orders.filter(
+    o => o.createdBy === currentUser.id || o.clientName === currentUser.name
+  );
+
+  const handleSelectPackage = (pkg: any) => {
+    setTitle(`[Pacote] ${pkg.name}`);
+    setDescription(`Solicitação de pacote pré-estabelecido de ${pkg.name}.\n\nValor Fixo: ${pkg.price}\n\nO que está incluso:\n${pkg.features.map((f: string) => `• ${f}`).join('\n')}`);
+    setPriority('media');
+    
+    alert(`Pacote "${pkg.name}" selecionado! O formulário abaixo foi preenchido com as especificações e o valor fixo (${pkg.price}).\n\nAgora basta revisar os detalhes e clicar em "Enviar Solicitação de Serviço".`);
+    
+    const formEl = document.getElementById('request-form-section');
+    if (formEl) {
+      formEl.scrollIntoView({ behavior: 'smooth' });
+    }
+  };
+
+  const handleBotResponse = async (userText: string) => {
+    // Append user message to bot messages first
+    const userMsg = {
+      id: `user_${Date.now()}`,
+      senderId: currentUser.id,
+      senderName: currentUser.name,
+      senderRole: 'client' as const,
+      text: userText,
+      timestamp: new Date().toISOString()
+    };
+
+    setBotMessages(prev => [...prev, userMsg]);
+    setIsBotTyping(true);
+
+    try {
+      const response = await fetch('/api/gemini/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: userText,
+          // Limit history to last 10 messages for lightweight context
+          history: botMessages.slice(-10)
+        })
+      });
+
+      if (!response.ok) throw new Error('Failed to fetch bot response');
+      const data = await response.json();
+
+      setBotMessages(prev => [
+        ...prev,
+        {
+          id: `bot_${Date.now()}`,
+          senderId: 'zentex_bot',
+          senderName: 'Zentex Bot',
+          senderRole: 'bot',
+          text: data.response,
+          timestamp: new Date().toISOString()
+        }
+      ]);
+      setIsBotTyping(false);
+
+      // If transferToHuman was triggered by Gemini
+      if (data.transferToHuman) {
+        // Automatically send the message to the human chat so the manager receives it!
+        await onSendMessage(`[Mensagem Transferida do Bot]: ${userText}`, 'admin1');
+        
+        // Notify user they are being transferred and switch mode
+        setTimeout(() => {
+          setChatMode('manager');
+          setTimeout(() => {
+            const container = document.getElementById('client-chat-scroll');
+            if (container) container.scrollTop = container.scrollHeight;
+          }, 100);
+        }, 3000);
+      }
+    } catch (err) {
+      console.error('Failed to get bot response', err);
+      // Fallback
+      setIsBotTyping(false);
+      
+      // Fallback response matching
+      let botResponse = '';
+      let transferToHuman = false;
+      const textLower = userText.toLowerCase();
+
+      if (textLower.includes('pacote') || textLower.includes('valor') || textLower.includes('preço') || textLower.includes('preco') || textLower.includes('quanto') || textLower.includes('custo') || textLower.includes('tabela')) {
+        botResponse = `Oferecemos 5 excelentes **Pacotes com Preços Fixos** para facilitar seu atendimento:\n\n` +
+          `1️⃣ **Limpeza Comercial Express**: R$ 190,00 (Salas de até 60m², aspiração, pó, lixeiras e banheiros)\n` +
+          `2️⃣ **Limpeza Residencial Profunda**: R$ 290,00 (Casas de até 100m², cozinha/banheiros completos)\n` +
+          `3️⃣ **Limpeza Pós-Obra Master**: R$ 790,00 (Limpeza pesada pós-reforma)\n` +
+          `4️⃣ **Limpeza de Vidros & Vitrines**: R$ 160,00 (Limpeza técnica de vidraças térreas)\n` +
+          `5️⃣ **Sanitização de Ambientes**: R$ 380,00 (Higienização contra germes com laudo)\n\n` +
+          `💡 *Dica:* Você pode ir para a aba **"Pedir Serviço"** para selecionar qualquer um desses pacotes prontos!`;
+      } else if (textLower.includes('rastrear') || textLower.includes('tecnico') || textLower.includes('téc') || textLower.includes('onde está') || textLower.includes('mapa') || textLower.includes('radar')) {
+        botResponse = `A Zentex possui um exclusivo sistema de **Rastreamento via Radar**! 📡\n\n` +
+          `Para rastrear seu técnico:\n` +
+          `1. Vá para a aba **"Minhas Ordens"** no menu principal.\n` +
+          `2. Encontre a solicitação que está com o status **"Em Andamento"**.\n` +
+          `3. Clique em **"Rastrear no Radar"** para abrir o mapa em tempo real!`;
+      } else if (textLower.includes('cadastro') || textLower.includes('perfil') || textLower.includes('mudar') || textLower.includes('alterar') || textLower.includes('endereço')) {
+        botResponse = `Você pode atualizar seus dados cadastrais indo até a aba **"Meu Cadastro"** no menu superior! Lá você altera nome, telefone, foto e endereço padrão.`;
+      } else if (textLower.includes('gerente') || textLower.includes('humano') || textLower.includes('suporte') || textLower.includes('atendimento') || textLower.includes('falar com')) {
+        botResponse = `Sem problemas! Estou te transferindo para o suporte de nossa gerência humana para um atendimento personalizado.`;
+        transferToHuman = true;
+      } else {
+        botResponse = `Entendi! Sou o assistente virtual da Zentex. No momento estou em modo offline inteligente. Você pode me perguntar sobre **"pacotes"**, **"rastrear técnico"**, ou **"alterar cadastro"**. Se desejar falar com um gerente humano, basta me pedir ou mudar para a aba **"Suporte (Gerência)"** no topo!`;
+      }
+
+      setBotMessages(prev => [
+        ...prev,
+        {
+          id: `bot_${Date.now()}`,
+          senderId: 'zentex_bot',
+          senderName: 'Zentex Bot',
+          senderRole: 'bot',
+          text: botResponse,
+          timestamp: new Date().toISOString()
+        }
+      ]);
+
+      if (transferToHuman) {
+        await onSendMessage(`[Mensagem Transferida do Bot]: ${userText}`, 'admin1');
+        setTimeout(() => {
+          setChatMode('manager');
+          setTimeout(() => {
+            const container = document.getElementById('client-chat-scroll');
+            if (container) container.scrollTop = container.scrollHeight;
+          }, 100);
+        }, 3000);
+      }
+    }
+
+    // scroll bottom
+    setTimeout(() => {
+      const container = document.getElementById('bot-chat-scroll');
+      if (container) container.scrollTop = container.scrollHeight;
+    }, 100);
+  };
+
+  const getPackageFromTitle = () => {
+    if (title.startsWith('[Pacote] ')) {
+      const pkgName = title.replace('[Pacote] ', '').trim();
+      return SERVICE_PACKAGES.find(p => p.name === pkgName);
+    }
+    return null;
+  };
+
+  const calculatePriceBreakdown = () => {
+    const selectedPkg = getPackageFromTitle();
+    if (selectedPkg) {
+      const numPrice = parseFloat(selectedPkg.price.replace('R$ ', '').replace('.', '').replace(',', '.').trim());
+      return {
+        isPackage: true,
+        basePrice: numPrice,
+        extras: 0,
+        prioritySurcharge: 0,
+        total: numPrice,
+        breakdownLines: [`Valor Fixo do Pacote "${selectedPkg.name}"`]
+      };
+    }
+
+    if (!title && !description) {
+      return {
+        isPackage: false,
+        basePrice: 0,
+        extras: 0,
+        prioritySurcharge: 0,
+        total: 0,
+        breakdownLines: []
+      };
+    }
+
+    let basePrice = 120;
+    let extras = 0;
+    const lines: string[] = ['Taxa Mínima de Visita & Diagnóstico: R$ 120,00'];
+
+    const combinedText = (title + ' ' + description).toLowerCase();
+
+    // Size matching
+    const m2Regex = /(\d+)\s*(m²|m2|metros|sqm)/i;
+    const match = combinedText.match(m2Regex);
+    if (match) {
+      const size = parseInt(match[1]);
+      if (size > 50) {
+        const excess = size - 50;
+        const sizeCharge = excess * 2.5; // R$ 2.50 per excess m²
+        extras += sizeCharge;
+        lines.push(`Adicional por Área (${size}m²): + R$ ${sizeCharge.toFixed(2).replace('.', ',')}`);
+      } else {
+        lines.push(`Área informada (${size}m²) inclusa na taxa base`);
+      }
+    } else {
+      lines.push('Área padrão estimada (até 50m² inclusa na taxa base)');
+    }
+
+    // Complexity
+    if (combinedText.includes('obra') || combinedText.includes('reforma') || combinedText.includes('gesso') || combinedText.includes('pintura') || combinedText.includes('construção')) {
+      extras += 350;
+      lines.push('Adicional de Complexidade Pós-Obra (Resíduos Pesados): + R$ 350,00');
+    } else if (combinedText.includes('profunda') || combinedText.includes('pesada') || combinedText.includes('faxina') || combinedText.includes('completa')) {
+      extras += 100;
+      lines.push('Adicional de Limpeza Profunda: + R$ 100,00');
+    }
+
+    if (combinedText.includes('vidro') || combinedText.includes('janela') || combinedText.includes('vitrine') || combinedText.includes('vidraça')) {
+      extras += 60;
+      lines.push('Adicional de Polimento de Vidros/Esquadrias: + R$ 60,00');
+    }
+
+    if (combinedText.includes('sanitiz') || combinedText.includes('desinfec') || combinedText.includes('germes') || combinedText.includes('bactér') || combinedText.includes('clínica')) {
+      extras += 150;
+      lines.push('Adicional de Sanitização Técnica com Pulverizador: + R$ 150,00');
+    }
+
+    // Priority Surcharge
+    let prioritySurcharge = 0;
+    if (priority === 'alta') {
+      prioritySurcharge = (basePrice + extras) * 0.3;
+      lines.push(`Acréscimo de Urgência Operacional (Alta): + R$ ${prioritySurcharge.toFixed(2).replace('.', ',')}`);
+    } else if (priority === 'baixa') {
+      prioritySurcharge = -(basePrice + extras) * 0.1;
+      lines.push(`Desconto por Agendamento Flexível (Baixa): - R$ ${Math.abs(prioritySurcharge).toFixed(2).replace('.', ',')}`);
+    }
+
+    const total = basePrice + extras + prioritySurcharge;
+
+    return {
+      isPackage: false,
+      basePrice,
+      extras,
+      prioritySurcharge,
+      total: Math.max(120, total),
+      breakdownLines: lines
+    };
+  };
+
+  const handleCreateRequest = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!title || !description || !address) {
+      alert('Por favor, preencha o título, a descrição e o endereço de atendimento.');
+      return;
+    }
+
+    if (!selectedPayMethod) {
+      alert('Por favor, escolha uma forma de pagamento (Pix, Cartão de Crédito ou Débito) no painel abaixo antes de enviar.');
+      return;
+    }
+
+    if (selectedPayMethod === 'credit' || selectedPayMethod === 'debit') {
+      if (!cardName || !cardNumber || !cardExpiry || !cardCVV) {
+        alert('Por favor, preencha todos os dados do seu cartão para autorização do pagamento.');
+        return;
+      }
+      if (cardNumber.replace(/\s/g, '').length < 16) {
+        alert('Por favor, digite um número de cartão de crédito/débito válido de 16 dígitos.');
+        return;
+      }
+    }
+
+    setIsPaying(true);
+    setSubmitting(true);
+
+    // Simulate contacting payment gateway
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    try {
+      const priceData = calculatePriceBreakdown();
+      await onCreateOrder({
+        title,
+        description,
+        clientName: currentUser.name,
+        clientAddress: address,
+        clientPhone: phone || currentUser.phone || '',
+        priority,
+        status: 'aberta',
+        createdBy: currentUser.id,
+        price: priceData.total,
+        paymentStatus: 'pago',
+        paymentMethod: selectedPayMethod,
+        paymentDate: new Date().toISOString()
+      });
+      
+      // Clear fields
+      setTitle('');
+      setDescription('');
+      setPriority('media');
+      setSelectedPayMethod(null);
+      setCardName('');
+      setCardNumber('');
+      setCardExpiry('');
+      setCardCVV('');
+      
+      // Speak confirmation if voice is enabled
+      if ((window as any).zentexSpeakForce) {
+        (window as any).zentexSpeakForce('Pagamento autorizado e solicitação registrada com sucesso!');
+      }
+      
+      alert('Pagamento aprovado e solicitação enviada com sucesso! Um administrador irá analisar e atribuir um técnico em breve.');
+      setActiveTab('my-orders');
+    } catch (err) {
+      alert('Erro ao enviar solicitação.');
+    } finally {
+      setIsPaying(false);
+      setSubmitting(false);
+    }
+  };
+
+  const handleUpdateProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaveSuccess(false);
+    try {
+      const response = await fetch('/api/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...currentUser,
+          name: profileName,
+          phone: profilePhone,
+          address: profileAddress,
+          avatar: profileAvatar || getAvatarUrl(currentUser)
+        })
+      });
+      if (response.ok) {
+        setSaveSuccess(true);
+        setTimeout(() => setSaveSuccess(false), 3000);
+        await onRefreshData();
+      } else {
+        alert('Erro ao atualizar dados cadastrais.');
+      }
+    } catch {
+      alert('Erro de conexão ao salvar perfil.');
+    }
+  };
+
+  const handleSendChat = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!chatText.trim()) return;
+    try {
+      await onSendMessage(chatText.trim(), 'admin1'); // Send directly to the main admin channel
+      setChatText('');
+      setTimeout(() => {
+        const container = document.getElementById('client-chat-scroll');
+        if (container) {
+          container.scrollTop = container.scrollHeight;
+        }
+      }, 100);
+    } catch {
+      alert('Erro ao enviar mensagem.');
+    }
+  };
+
+  // Filter chat messages relevant to client (sent by client or sent by admin/employees with no specific receiver, or direct to client)
+  const clientChatMessages = messages.filter(
+    msg => msg.senderId === currentUser.id || msg.receiverId === currentUser.id || (!msg.receiverId && msg.senderRole === 'admin')
+  );
+
+  return (
+    <div className="space-y-6">
+      {/* HEADER BANNER FOR CLIENT PORTAL */}
+      <div className="bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-600 rounded-3xl p-6 md:p-8 text-white shadow-lg relative overflow-hidden">
+        {/* Decorative elements */}
+        <div className="absolute top-0 right-0 -mt-12 -mr-12 w-48 h-48 bg-white/10 rounded-full blur-2xl pointer-events-none" />
+        <div className="absolute bottom-0 left-1/3 -mb-12 w-64 h-64 bg-emerald-700/20 rounded-full blur-3xl pointer-events-none" />
+        
+        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div className="space-y-2">
+            <span className="text-[10px] bg-white/20 px-3 py-1 rounded-full font-black uppercase tracking-widest text-emerald-100 flex items-center gap-1.5 w-fit">
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Zentex Express</span>
+            </span>
+            <h2 className="text-xl md:text-2xl font-black tracking-tight leading-tight">
+              Olá, {currentUser.name}!
+            </h2>
+            <p className="text-xs text-emerald-100/90 max-w-xl">
+              Solicite serviços de limpeza e conservação em tempo real, acompanhe o status da sua ordem de serviço e rastreie o técnico designado via satélite direto no mapa.
+            </p>
+          </div>
+
+          <div className="bg-white/10 backdrop-blur-md rounded-2xl p-4 border border-white/10 text-center min-w-[160px]">
+            <span className="text-[10px] text-emerald-100 font-bold block uppercase tracking-wider">Solicitações Ativas</span>
+            <span className="text-3xl font-black font-mono block mt-1">
+              {clientOrders.filter(o => o.status !== 'concluida' && o.status !== 'cancelada').length}
+            </span>
+            <span className="text-[9px] text-emerald-200 mt-0.5 block">em andamento ou abertas</span>
+          </div>
+        </div>
+      </div>
+
+      {/* PORTAL NAVIGATION TABS */}
+      <div className="grid grid-cols-4 bg-white p-1 rounded-2xl border border-slate-200/80 shadow-3d-sm">
+        <button
+          onClick={() => setActiveTab('request')}
+          className={`py-3 text-xs font-black rounded-xl transition-all flex flex-col sm:flex-row items-center justify-center gap-1.5 cursor-pointer ${
+            activeTab === 'request'
+              ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md'
+              : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
+          }`}
+        >
+          <Send className="w-4 h-4" />
+          <span>Pedir Serviço</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('my-orders')}
+          className={`py-3 text-xs font-black rounded-xl transition-all flex flex-col sm:flex-row items-center justify-center gap-1.5 cursor-pointer ${
+            activeTab === 'my-orders'
+              ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md'
+              : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
+          }`}
+        >
+          <Clipboard className="w-4 h-4" />
+          <span>Minhas Ordens</span>
+          {clientOrders.length > 0 && (
+            <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ml-1 ${
+              activeTab === 'my-orders' ? 'bg-white text-emerald-600' : 'bg-slate-200 text-slate-700'
+            }`}>
+              {clientOrders.length}
+            </span>
+          )}
+        </button>
+
+        <button
+          onClick={() => setActiveTab('chat')}
+          className={`py-3 text-xs font-black rounded-xl transition-all flex flex-col sm:flex-row items-center justify-center gap-1.5 cursor-pointer ${
+            activeTab === 'chat'
+              ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md'
+              : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
+          }`}
+        >
+          <MessageSquare className="w-4 h-4" />
+          <span>Falar com Zentex</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('profile')}
+          className={`py-3 text-xs font-black rounded-xl transition-all flex flex-col sm:flex-row items-center justify-center gap-1.5 cursor-pointer ${
+            activeTab === 'profile'
+              ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md'
+              : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
+          }`}
+        >
+          <Settings className="w-4 h-4" />
+          <span>Meu Cadastro</span>
+        </button>
+      </div>
+
+      {/* TAB 1: SERVICE REQUEST FORM */}
+      {activeTab === 'request' && (
+        <div className="space-y-6">
+          {/* READY-TO-ORDER SERVICE PACKAGES (Values & Services) */}
+          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-4 mb-6">
+              <div>
+                <h3 className="text-sm font-black text-slate-800 flex items-center gap-1.5 uppercase tracking-wider">
+                  <Sparkles className="w-5 h-5 text-emerald-600" />
+                  <span>Pacotes de Serviços com Valores Fixos</span>
+                </h3>
+                <p className="text-xs text-slate-500 mt-1">Contratação ágil, econômica e sem burocracia para as necessidades mais comuns.</p>
+              </div>
+              <span className="text-[10px] bg-emerald-55 text-emerald-800 font-black px-3 py-1 rounded-full border border-emerald-100 animate-pulse self-start uppercase tracking-wider">Selecione e peça já</span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              {SERVICE_PACKAGES.map((pkg) => {
+                const pkgIcon = getPackageIcon(pkg.icon);
+                return (
+                  <div 
+                    key={pkg.id} 
+                    className="bg-slate-50 border border-slate-200/80 rounded-3xl p-5 hover:border-emerald-400 hover:shadow-md hover:bg-white transition-all flex flex-col justify-between relative overflow-hidden group border-b-4 hover:border-b-emerald-500 duration-250"
+                  >
+                    {/* Badge */}
+                    <div className="absolute top-3 right-3 flex items-center gap-1.5">
+                      <span className={`text-[8px] font-black uppercase tracking-wider text-white bg-gradient-to-r ${pkg.badgeColor} px-2 py-0.5 rounded-full shadow-sm`}>
+                        {pkg.badge}
+                      </span>
+                    </div>
+
+                    <div className="space-y-3">
+                      {/* Icon & Title */}
+                      <div className="flex items-center gap-3">
+                        <div className="p-2.5 bg-emerald-50 text-emerald-600 rounded-2xl border border-emerald-100 shadow-sm group-hover:scale-105 transition-transform">
+                          {pkgIcon}
+                        </div>
+                        <div>
+                          <h4 className="text-xs font-black text-slate-800 leading-tight group-hover:text-emerald-700 transition-colors">{pkg.name}</h4>
+                          <span className="text-[9px] font-mono text-slate-400 block mt-0.5">Tempo estimado: {pkg.duration}</span>
+                        </div>
+                      </div>
+
+                      {/* Description */}
+                      <p className="text-[10px] text-slate-500 leading-relaxed min-h-[40px]">{pkg.description}</p>
+
+                      {/* Features */}
+                      <ul className="space-y-1.5 border-t border-slate-100 pt-3">
+                        {pkg.features.map((feature, i) => (
+                          <li key={i} className="flex items-start gap-1.5 text-[9.5px] text-slate-600">
+                            <Check className="w-3.5 h-3.5 text-emerald-500 mt-0.5 flex-shrink-0" />
+                            <span>{feature}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+
+                    {/* Price and Action Button */}
+                    <div className="pt-4 mt-4 border-t border-slate-100 flex items-center justify-between gap-2">
+                      <div className="space-y-0.5">
+                        <span className="text-[8px] text-slate-400 uppercase font-black block">Valor Fixo</span>
+                        <span className="text-sm font-black text-slate-800 font-mono tracking-tight">{pkg.price}</span>
+                      </div>
+                      
+                      <button
+                        type="button"
+                        onClick={() => handleSelectPackage(pkg)}
+                        className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-[9px] uppercase tracking-wider rounded-xl shadow-sm hover:shadow-md transition-all flex items-center gap-1 cursor-pointer"
+                      >
+                        <Zap className="w-3 h-3 text-emerald-200" />
+                        <span>Selecionar</span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Form section */}
+          <div id="request-form-section" className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
+            <div className="mb-6 border-b border-slate-100 pb-4">
+              <h3 className="text-sm font-black text-slate-800 flex items-center gap-2">
+                <Clipboard className="w-5 h-5 text-emerald-600" />
+                <span>Preencher Detalhes da Solicitação</span>
+              </h3>
+              <p className="text-xs text-slate-500 mt-1">Modifique os detalhes abaixo ou digite seu pedido personalizado se preferir.</p>
+            </div>
+
+            <form onSubmit={handleCreateRequest} className="space-y-4 max-w-2xl">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="sm:col-span-2">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase">Qual serviço você precisa? *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Ex: Limpeza pós-obra de escritório, Limpeza de vidros externos..."
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 mt-1 focus:outline-none focus:border-emerald-500 focus:bg-white transition-all shadow-inner"
+                  />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase">Descrição detalhada do problema ou necessidade *</label>
+                  <textarea
+                    rows={5}
+                    required
+                    placeholder="Descreva as especificações, metros quadrados estimados, particularidades ou necessidades especiais para os técnicos levarem os equipamentos adequados..."
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 mt-1 focus:outline-none focus:border-emerald-500 focus:bg-white transition-all resize-none shadow-inner"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase">Grau de Urgência</label>
+                  <select
+                    value={priority}
+                    onChange={(e) => setPriority(e.target.value as OSPriority)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 mt-1 focus:outline-none focus:border-emerald-500 focus:bg-white transition-all shadow-inner"
+                  >
+                    <option value="baixa">Baixa (Pode aguardar alguns dias)</option>
+                    <option value="media">Média (Aguardando nas próximas 24-48h)</option>
+                    <option value="alta">Alta (Urgente - Atendimento no mesmo dia)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase">Telefone / WhatsApp para contato</label>
+                  <input
+                    type="text"
+                    placeholder="Ex: (11) 99999-8888"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 mt-1 focus:outline-none focus:border-emerald-500 focus:bg-white transition-all shadow-inner"
+                  />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase">Endereço Completo para Atendimento *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Ex: Alameda Lorena, 1200 - Jardins, São Paulo - SP"
+                    value={address}
+                    onChange={(e) => setAddress(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 mt-1 focus:outline-none focus:border-emerald-500 focus:bg-white transition-all shadow-inner"
+                  />
+                  <span className="text-[9px] text-slate-400 mt-1 block">O endereço padrão do seu cadastro foi pré-preenchido, mas você pode alterá-lo para esta solicitação específica.</span>
+                </div>
+              </div>
+
+              {/* DYNAMIC PRICING ESTIMATOR & BREAKDOWN */}
+              {(title || description) && (
+                <div className="mt-6 bg-slate-50 border border-slate-200/60 rounded-2xl p-5 space-y-4 animate-fade-in">
+                  <div className="flex items-center justify-between border-b border-slate-200/50 pb-3">
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 bg-emerald-100 text-emerald-800 rounded-lg">
+                        <Sparkles className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider">Cálculo e Estimativa Zentex</h4>
+                        <p className="text-[9px] text-slate-500 font-medium">Valores calculados em tempo real com transparência operacional</p>
+                      </div>
+                    </div>
+                    <span className="text-[9px] font-mono font-bold bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-full">
+                      {calculatePriceBreakdown().isPackage ? 'Pacote Fixo' : 'Serviço Personalizado'}
+                    </span>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    {calculatePriceBreakdown().breakdownLines.map((line, i) => (
+                      <div key={i} className="flex justify-between items-center text-[10px] text-slate-600">
+                        <span className="font-medium flex items-center gap-1">
+                          <Check className="w-3 h-3 text-emerald-500 shrink-0" />
+                          {line.split(':')[0]}
+                        </span>
+                        {line.includes(':') && (
+                          <span className="font-mono font-bold text-slate-700">{line.split(':')[1]}</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="border-t border-slate-200 pt-3 flex items-center justify-between">
+                    <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider">Valor Total do Atendimento</span>
+                    <div className="text-right">
+                      <span className="text-sm font-bold text-slate-400 font-mono align-super mr-0.5">R$</span>
+                      <span className="text-2xl font-black text-slate-900 font-mono tracking-tight">
+                        {calculatePriceBreakdown().total.toFixed(2).replace('.', ',')}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* SECURE PAYMENT METHOD SELECTOR */}
+              {(title || description) && (
+                <div className="bg-slate-50 border border-slate-200/60 rounded-2xl p-5 space-y-4">
+                  <div className="flex items-center gap-2 border-b border-slate-200/50 pb-3">
+                    <div className="p-1.5 bg-blue-100 text-blue-800 rounded-lg">
+                      <Lock className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider">Escolha a Forma de Pagamento Seguro</h4>
+                      <p className="text-[9px] text-slate-500 font-medium">Ambiente blindado Zentex Checkout (Cartão ou Pix)</p>
+                    </div>
+                  </div>
+
+                  {/* Payment Methods Grid */}
+                  <div className="grid grid-cols-3 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedPayMethod('pix');
+                        if ((window as any).zentexSpeakForce) (window as any).zentexSpeakForce('Método de pagamento Pix selecionado.');
+                      }}
+                      className={`py-3 rounded-xl border flex flex-col items-center justify-center gap-1.5 cursor-pointer transition-all ${
+                        selectedPayMethod === 'pix'
+                          ? 'bg-white border-blue-500 text-blue-700 shadow-md ring-2 ring-blue-200'
+                          : 'bg-white border-slate-200 text-slate-500 hover:text-slate-800 hover:border-slate-300 shadow-sm'
+                      }`}
+                    >
+                      <Smartphone className="w-5 h-5 shrink-0" />
+                      <span className="text-[9px] font-black uppercase tracking-wider">Pix Instantâneo</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedPayMethod('credit');
+                        if ((window as any).zentexSpeakForce) (window as any).zentexSpeakForce('Método de pagamento Cartão de Crédito selecionado.');
+                      }}
+                      className={`py-3 rounded-xl border flex flex-col items-center justify-center gap-1.5 cursor-pointer transition-all ${
+                        selectedPayMethod === 'credit'
+                          ? 'bg-white border-blue-500 text-blue-700 shadow-md ring-2 ring-blue-200'
+                          : 'bg-white border-slate-200 text-slate-500 hover:text-slate-800 hover:border-slate-300 shadow-sm'
+                      }`}
+                    >
+                      <CreditCard className="w-5 h-5 shrink-0" />
+                      <span className="text-[9px] font-black uppercase tracking-wider">Cartão Crédito</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedPayMethod('debit');
+                        if ((window as any).zentexSpeakForce) (window as any).zentexSpeakForce('Método de pagamento Cartão de Débito selecionado.');
+                      }}
+                      className={`py-3 rounded-xl border flex flex-col items-center justify-center gap-1.5 cursor-pointer transition-all ${
+                        selectedPayMethod === 'debit'
+                          ? 'bg-white border-blue-500 text-blue-700 shadow-md ring-2 ring-blue-200'
+                          : 'bg-white border-slate-200 text-slate-500 hover:text-slate-800 hover:border-slate-300 shadow-sm'
+                      }`}
+                    >
+                      <div className="relative">
+                        <CreditCard className="w-5 h-5 shrink-0" />
+                        <span className="absolute -bottom-1 -right-1 text-[7px] font-bold bg-slate-200 text-slate-700 px-0.5 rounded border border-white leading-none font-mono">D</span>
+                      </div>
+                      <span className="text-[9px] font-black uppercase tracking-wider">Cartão Débito</span>
+                    </button>
+                  </div>
+
+                  {/* PIX INPUT AND INTERACTION PANEL */}
+                  {selectedPayMethod === 'pix' && (
+                    <div className="bg-white border border-slate-200/80 rounded-xl p-4 space-y-4 animate-fade-in">
+                      <div className="flex flex-col sm:flex-row items-center gap-4">
+                        {/* Real Dynamic QR Code Image */}
+                        <div className="w-28 h-28 bg-white border-2 border-slate-200 p-1.5 rounded-xl flex items-center justify-center shrink-0 shadow-sm relative">
+                          <img 
+                            src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(
+                              `00020101021226850014br.gov.bcb.pix2563pix.zentex.com.br/qr/v2/payment/${currentUser.id}${calculatePriceBreakdown().total.toFixed(2)}`
+                            )}`} 
+                            alt="QR Code Pix"
+                            className="w-full h-full object-contain"
+                            referrerPolicy="no-referrer"
+                          />
+                          {/* Small Zentex center logo indicator */}
+                          <div className="absolute inset-0 m-auto w-6 h-6 bg-emerald-600 rounded-md border-2 border-white flex items-center justify-center shadow-md">
+                            <span className="text-[7px] text-white font-black">Z</span>
+                          </div>
+                        </div>
+
+                        <div className="space-y-2 flex-1 w-full">
+                          <span className="text-[8px] bg-emerald-50 text-emerald-800 font-extrabold px-2 py-0.5 rounded border border-emerald-100 inline-block uppercase tracking-wider">Pix Banco Central</span>
+                          <h5 className="text-[11px] font-bold text-slate-800">Efetue o pagamento lendo o QR Code ou copiando o código abaixo</h5>
+                          <p className="text-[9px] text-slate-400">Após realizar o pagamento, nosso sistema identificará automaticamente a liquidação instantânea.</p>
+                        </div>
+                      </div>
+
+                      {/* Pix Copia e Cola box */}
+                      <div className="space-y-1.5 pt-2 border-t border-slate-100">
+                        <label className="text-[8px] font-bold text-slate-400 uppercase">Pix Copia e Cola</label>
+                        <div className="flex gap-1.5">
+                          <input
+                            type="text"
+                            readOnly
+                            value={`00020101021226850014br.gov.bcb.pix2563pix.zentex.com.br/qr/v2/payment/${currentUser.id}${calculatePriceBreakdown().total.toFixed(2)}`}
+                            className="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-[10px] text-slate-500 font-mono select-all focus:outline-none"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const pixCode = `00020101021226850014br.gov.bcb.pix2563pix.zentex.com.br/qr/v2/payment/${currentUser.id}${calculatePriceBreakdown().total.toFixed(2)}`;
+                              navigator.clipboard.writeText(pixCode);
+                              setHasCopiedPix(true);
+                              if ((window as any).zentexSpeakForce) (window as any).zentexSpeakForce('Código Copiado!');
+                              setTimeout(() => setHasCopiedPix(false), 2000);
+                            }}
+                            className="px-3 bg-slate-100 border border-slate-200 hover:bg-slate-200 rounded-lg text-slate-600 flex items-center justify-center gap-1 transition-all text-[9px] font-bold cursor-pointer"
+                          >
+                            {hasCopiedPix ? (
+                              <>
+                                <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                <span className="text-emerald-700">Copiado!</span>
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="w-3.5 h-3.5" />
+                                <span>Copiar</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* CREDIT & DEBIT CARD INPUT PANEL AND VIRTUAL CARD PREVIEW */}
+                  {(selectedPayMethod === 'credit' || selectedPayMethod === 'debit') && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-fade-in">
+                      {/* Stylized high fidelity credit card preview */}
+                      <div className="bg-gradient-to-tr from-slate-900 to-indigo-950 text-white rounded-2xl p-4 shadow-lg border border-slate-800/50 flex flex-col justify-between aspect-[1.58/1] relative overflow-hidden group">
+                        {/* Chip Graphic */}
+                        <div className="absolute top-4 right-4 w-10 h-10 bg-white/5 rounded-full blur-xl pointer-events-none" />
+                        
+                        <div className="flex justify-between items-start">
+                          <div className="space-y-1">
+                            <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">Zentex Premium Card</span>
+                            <div className="w-8 h-6 bg-gradient-to-r from-amber-400 to-yellow-300 rounded-md shadow-sm border border-yellow-200/50" />
+                          </div>
+                          <span className="text-xs font-black italic text-slate-100 tracking-wider">
+                            {selectedPayMethod === 'credit' ? 'CREDIT' : 'DEBIT'}
+                          </span>
+                        </div>
+
+                        <div className="space-y-1.5 mt-2">
+                          <span className="text-[10px] text-slate-500 font-mono block">NÚMERO DO CARTÃO</span>
+                          <span className="text-sm font-bold font-mono tracking-widest text-slate-100 block">
+                            {cardNumber || '•••• •••• •••• ••••'}
+                          </span>
+                        </div>
+
+                        <div className="flex justify-between items-end border-t border-white/10 pt-2">
+                          <div>
+                            <span className="text-[8px] text-slate-500 font-mono block uppercase">TITULAR</span>
+                            <span className="text-[10px] font-bold tracking-wide uppercase block truncate max-w-[150px]">
+                              {cardName || 'NOME IMPRESSO'}
+                            </span>
+                          </div>
+                          <div className="flex gap-4">
+                            <div>
+                              <span className="text-[8px] text-slate-500 font-mono block uppercase">VALIDADE</span>
+                              <span className="text-[10px] font-bold font-mono block">
+                                {cardExpiry || 'MM/AA'}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-[8px] text-slate-500 font-mono block uppercase">CVV</span>
+                              <span className="text-[10px] font-bold font-mono block">
+                                {cardCVV || '•••'}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Input fields */}
+                      <div className="space-y-3">
+                        <div>
+                          <label className="text-[9px] font-bold text-slate-400 uppercase">Nome do Titular *</label>
+                          <input
+                            type="text"
+                            placeholder="Como impresso no cartão"
+                            value={cardName}
+                            onChange={(e) => setCardName(e.target.value.toUpperCase())}
+                            className="w-full bg-white border border-slate-250 rounded-xl px-3 py-1.5 text-[10px] text-slate-800 mt-1 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-100 transition-all"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-[9px] font-bold text-slate-400 uppercase">Número do Cartão *</label>
+                          <input
+                            type="text"
+                            maxLength={19}
+                            placeholder="0000 0000 0000 0000"
+                            value={cardNumber}
+                            onChange={(e) => {
+                              // Formats raw digits with space separation
+                              const raw = e.target.value.replace(/\D/g, '');
+                              const formatted = raw.replace(/(\d{4})/g, '$1 ').trim();
+                              setCardNumber(formatted);
+                            }}
+                            className="w-full bg-white border border-slate-250 rounded-xl px-3 py-1.5 text-[10px] text-slate-800 mt-1 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-100 transition-all font-mono"
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="text-[9px] font-bold text-slate-400 uppercase">Validade *</label>
+                            <input
+                              type="text"
+                              maxLength={5}
+                              placeholder="MM/AA"
+                              value={cardExpiry}
+                              onChange={(e) => {
+                                const raw = e.target.value.replace(/\D/g, '');
+                                if (raw.length >= 2) {
+                                  setCardExpiry(`${raw.slice(0, 2)}/${raw.slice(2, 4)}`);
+                                } else {
+                                  setCardExpiry(raw);
+                                }
+                              }}
+                              className="w-full bg-white border border-slate-250 rounded-xl px-3 py-1.5 text-[10px] text-slate-800 mt-1 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-100 transition-all font-mono"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="text-[9px] font-bold text-slate-400 uppercase">Código CVV *</label>
+                            <input
+                              type="password"
+                              maxLength={3}
+                              placeholder="123"
+                              value={cardCVV}
+                              onChange={(e) => setCardCVV(e.target.value.replace(/\D/g, ''))}
+                              className="w-full bg-white border border-slate-250 rounded-xl px-3 py-1.5 text-[10px] text-slate-800 mt-1 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-100 transition-all font-mono"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* PAYMENT PROGRESS OVERLAY / FEEDBACK AND TRIGGER */}
+              <div className="pt-4 border-t border-slate-100">
+                {isPaying ? (
+                  <div className="bg-slate-50 border border-slate-200/50 rounded-xl p-4 flex items-center justify-center gap-3">
+                    <svg className="animate-spin h-5 w-5 text-emerald-600" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                    <span className="text-xs font-black text-slate-700 uppercase tracking-wider animate-pulse">
+                      Processando transação segura Zentex...
+                    </span>
+                  </div>
+                ) : (
+                  <button
+                    type="submit"
+                    disabled={submitting}
+                    className="w-full sm:w-auto bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:from-slate-300 disabled:to-slate-400 text-white text-xs font-bold px-6 py-3 rounded-xl flex items-center justify-center gap-2 transition-all shadow-md cursor-pointer active:scale-95 duration-150"
+                  >
+                    <Send className="w-4 h-4" />
+                    <span>
+                      {!selectedPayMethod
+                        ? 'Selecione a Forma de Pagamento Abaixo'
+                        : `Confirmar e Pagar R$ ${calculatePriceBreakdown().total.toFixed(2).replace('.', ',')}`}
+                    </span>
+                  </button>
+                )}
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 2: MY ORDERS LIST & RADER TRACKING */}
+      {activeTab === 'my-orders' && (
+        <div className="space-y-6">
+          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
+            <div className="mb-6 border-b border-slate-100 pb-4">
+              <h3 className="text-sm font-black text-slate-800 flex items-center gap-2">
+                <FileText className="w-5 h-5 text-emerald-600" />
+                <span>Histórico de Ordens de Serviço</span>
+              </h3>
+              <p className="text-xs text-slate-500 mt-1">Acompanhe as solicitações que você já fez à Zentex.</p>
+            </div>
+
+            {clientOrders.length === 0 ? (
+              <div className="text-center py-10 space-y-3">
+                <div className="inline-flex p-4 bg-slate-50 text-slate-400 rounded-full border border-slate-100">
+                  <Clipboard className="w-8 h-8" />
+                </div>
+                <h4 className="text-sm font-bold text-slate-700">Nenhuma solicitação ainda</h4>
+                <p className="text-xs text-slate-400 max-w-md mx-auto">Você ainda não enviou nenhum pedido de serviço. Use a aba "Pedir Serviço" acima para fazer sua primeira solicitação.</p>
+                <button
+                  onClick={() => setActiveTab('request')}
+                  className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-4 py-2 rounded-xl mt-2 transition-all inline-flex items-center gap-1 cursor-pointer"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  <span>Pedir Meu Primeiro Serviço</span>
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {clientOrders.map(order => {
+                  const hasTechnician = !!order.assignedEmployeeId;
+                  const isTrackable = order.status === 'em_andamento' || order.status === 'pausada';
+                  
+                  return (
+                    <div 
+                      key={order.id} 
+                      className="bg-gradient-to-b from-white to-slate-50 border border-slate-200/80 rounded-2xl p-4 shadow-sm flex flex-col justify-between gap-4 hover:shadow-md transition-all duration-200"
+                    >
+                      <div className="space-y-3">
+                        <div className="flex items-start justify-between gap-2 border-b border-slate-100 pb-2.5">
+                          <div>
+                            <span className="text-[9px] font-mono font-bold text-slate-500 uppercase bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200/50">{order.id}</span>
+                            <span className="text-[9px] text-slate-400 block mt-1">
+                              {new Date(order.createdAt).toLocaleDateString('pt-BR')} às {new Date(order.createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          </div>
+
+                          <div className="text-right">
+                            {/* Priority badge */}
+                            <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-md border ${
+                              order.priority === 'alta' 
+                                ? 'bg-rose-50 text-rose-700 border-rose-200' 
+                                : order.priority === 'media' 
+                                ? 'bg-amber-50 text-amber-700 border-amber-200' 
+                                : 'bg-slate-50 text-slate-600 border-slate-200'
+                            }`}>
+                              {order.priority} Urgência
+                            </span>
+
+                            {/* Status badge */}
+                            <span className={`text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full border block mt-1.5 tracking-wider w-fit ml-auto ${
+                              order.status === 'aberta' 
+                                ? 'bg-indigo-50 text-indigo-700 border-indigo-200 animate-pulse'
+                                : order.status === 'em_andamento'
+                                ? 'bg-emerald-500 text-white border-emerald-600 font-bold'
+                                : order.status === 'pausada'
+                                ? 'bg-amber-500 text-white border-amber-600 font-bold'
+                                : order.status === 'concluida'
+                                ? 'bg-slate-100 text-slate-500 border-slate-200 font-bold'
+                                : 'bg-rose-100 text-rose-700 border-rose-200'
+                            }`}>
+                              {order.status === 'aberta' ? 'Aguardando' : order.status === 'em_andamento' ? 'Técnico a Caminho' : order.status === 'pausada' ? 'Pausada' : order.status === 'concluida' ? 'Concluída' : 'Cancelada'}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div>
+                          <h4 className="text-xs font-black text-slate-800 leading-snug">{order.title}</h4>
+                          <p className="text-[11px] text-slate-500 mt-1 line-clamp-2 leading-relaxed">{order.description}</p>
+                        </div>
+
+                        <div className="space-y-1.5 text-[10px] text-slate-600 bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+                          <div className="flex items-start gap-1.5">
+                            <MapPin className="w-3.5 h-3.5 text-emerald-600 mt-0.5 flex-shrink-0" />
+                            <span className="font-medium truncate">{order.clientAddress}</span>
+                          </div>
+
+                          {hasTechnician ? (
+                            <div className="flex items-center gap-1.5 pt-1.5 border-t border-slate-200/50">
+                              <UserCheck className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
+                              <div>
+                                <span className="text-slate-400 block text-[8px] uppercase tracking-wider leading-none">Técnico Designado</span>
+                                <span className="font-bold text-slate-700 text-[10px]">{order.assignedEmployeeName}</span>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1.5 pt-1.5 border-t border-slate-200/50">
+                              <Clock className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+                              <span className="text-amber-600 font-bold">Aguardando escalação do técnico...</span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* PAYMENT TRACKING INFO */}
+                        {order.paymentStatus === 'pago' ? (
+                          <div className="bg-emerald-50/50 border border-emerald-100/75 p-2.5 rounded-xl flex items-center justify-between text-[10px] mt-2 shadow-inner">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <CreditCard className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                              <div className="truncate">
+                                <span className="text-slate-400 block text-[8px] uppercase tracking-widest leading-none">Status do Pagamento</span>
+                                <span className="font-extrabold text-emerald-800 font-mono text-[9px]">
+                                  {order.price ? `Pago R$ ${order.price.toFixed(2).replace('.', ',')}` : 'Cortesia / Pago'}
+                                  {order.paymentMethod && ` (${order.paymentMethod.toUpperCase()})`}
+                                </span>
+                              </div>
+                            </div>
+                            
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setShowReceiptOrder(order);
+                                if ((window as any).zentexSpeakForce) (window as any).zentexSpeakForce('Abrindo recibo de transação segura.');
+                              }}
+                              className="px-2.5 py-1 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-bold text-[8px] uppercase tracking-wider rounded-lg shadow-sm cursor-pointer transition-all shrink-0 flex items-center gap-1 hover:border-emerald-300"
+                            >
+                              <FileText className="w-3 h-3 text-slate-500" />
+                              <span>Recibo</span>
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="bg-amber-50/50 border border-amber-100/75 p-2.5 rounded-xl flex items-center justify-between text-[10px] mt-2 shadow-inner">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <CreditCard className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                              <div className="truncate">
+                                <span className="text-slate-400 block text-[8px] uppercase tracking-widest leading-none">Status do Pagamento</span>
+                                <span className="font-extrabold text-amber-850 font-mono text-[9px]">
+                                  {order.price ? `Aguardando R$ ${order.price.toFixed(2).replace('.', ',')}` : 'Orçamento Pendente'}
+                                </span>
+                              </div>
+                            </div>
+                            
+                            {order.price && order.price > 0 ? (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setCheckoutOrder(order);
+                                  if ((window as any).zentexSpeakForce) (window as any).zentexSpeakForce('Iniciando checkout seguro do Efí Bank.');
+                                }}
+                                className="px-2.5 py-1.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-extrabold text-[8px] uppercase tracking-wider rounded-lg shadow-md cursor-pointer transition-all shrink-0 flex items-center gap-1 scale-102 hover:scale-105 active:scale-95 animate-pulse"
+                              >
+                                <CreditCard className="w-3.5 h-3.5" />
+                                <span>Pagar Agora</span>
+                              </button>
+                            ) : (
+                              <span className="text-[8px] bg-slate-100 text-slate-500 font-bold px-1.5 py-0.5 rounded uppercase font-sans">
+                                Faturamento
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* TRACKING ACTION FOOTER */}
+                      {isTrackable && hasTechnician && (
+                        <button
+                          onClick={() => setTrackingOrder(order)}
+                          className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-[10px] uppercase tracking-wider py-2 rounded-xl shadow-sm flex items-center justify-center gap-1.5 transition-all active:scale-95 duration-100 cursor-pointer border border-emerald-500/20"
+                        >
+                          <Map className="w-3.5 h-3.5" />
+                          <span>Rastrear Técnico no Mapa</span>
+                        </button>
+                      )}
+
+                      {order.status === 'concluida' && (
+                        <div className="text-[10px] text-slate-500 italic bg-slate-100 rounded-xl p-2.5 text-center flex items-center justify-center gap-1.5">
+                          <CheckCircle className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                          <span>Serviço finalizado e inspecionado.</span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* HIGH FIDELITY REAL-TIME RADAR MAP MODAL (TRACKING) */}
+          {trackingOrder && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+              <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-xl overflow-hidden shadow-2xl">
+                
+                {/* Modal Header */}
+                <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+                  <div>
+                    <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
+                      <Map className="w-5 h-5 text-emerald-600" />
+                      <span>Rastreamento em Tempo Real via Satélite</span>
+                    </h3>
+                    <p className="text-[10px] text-slate-400 font-medium">Zentex Radar operacional de acompanhamento</p>
+                  </div>
+                  <button 
+                    onClick={() => setTrackingOrder(null)}
+                    className="p-1.5 hover:bg-slate-50 text-slate-400 hover:text-slate-700 rounded-lg border border-slate-200 transition-colors cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Radar visualization & Simulated Map */}
+                <div className="p-6 space-y-4">
+                  
+                  {/* Informational tech panel */}
+                  <div className="grid grid-cols-2 gap-3 text-[10px] bg-slate-50 border border-slate-200/60 p-3.5 rounded-2xl shadow-inner">
+                    <div className="space-y-1">
+                      <span className="text-slate-400 uppercase font-bold block text-[8px]">Técnico de Campo</span>
+                      <span className="text-xs font-black text-slate-800">{trackingOrder.assignedEmployeeName}</span>
+                    </div>
+
+                    <div className="space-y-1">
+                      <span className="text-slate-400 uppercase font-bold block text-[8px]">Sinal GPS</span>
+                      <span className="text-xs font-black text-emerald-600 uppercase flex items-center gap-1">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping inline-block" />
+                        <span>Excelente (Conectado)</span>
+                      </span>
+                    </div>
+
+                    <div className="space-y-1 col-span-2 pt-2 border-t border-slate-200/50">
+                      <span className="text-slate-400 uppercase font-bold block text-[8px]">Destino de Atendimento</span>
+                      <span className="text-slate-700 font-medium truncate block">{trackingOrder.clientAddress}</span>
+                    </div>
+                  </div>
+
+                  {/* Gorgeous simulated vector radar screen representing map */}
+                  <div className="relative h-64 bg-slate-900 rounded-3xl overflow-hidden border border-slate-800 flex items-center justify-center">
+                    
+                    {/* Simulated background grid & sonar scan ring */}
+                    <div className="absolute inset-0 bg-[linear-gradient(rgba(16,185,129,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(16,185,129,0.03)_1px,transparent_1px)] bg-[size:16px_16px]" />
+                    
+                    {/* Sonar sweep line */}
+                    <div className="absolute w-full h-full bg-gradient-to-r from-emerald-500/0 via-emerald-500/15 to-emerald-500/0 animate-[spin_4s_linear_infinite] origin-center rounded-full pointer-events-none z-10" />
+
+                    {/* Sonar rings */}
+                    <div className="absolute w-12 h-12 border border-emerald-500/10 rounded-full" />
+                    <div className="absolute w-24 h-24 border border-emerald-500/10 rounded-full" />
+                    <div className="absolute w-40 h-40 border border-emerald-500/10 rounded-full" />
+                    <div className="absolute w-56 h-56 border border-emerald-500/10 rounded-full" />
+
+                    {/* Map Mock Locations */}
+                    {/* 1. Client House (Center of Radar) */}
+                    <div className="absolute flex flex-col items-center justify-center z-20">
+                      <div className="w-6 h-6 bg-indigo-600 text-white rounded-full flex items-center justify-center border-2 border-white shadow-lg">
+                        <User className="w-3.5 h-3.5" />
+                      </div>
+                      <span className="bg-slate-900/90 text-white text-[8px] font-bold px-1.5 py-0.5 rounded border border-slate-700 mt-1 uppercase tracking-wider">Você (Destino)</span>
+                    </div>
+
+                    {/* 2. Employee Position (Moving) */}
+                    <div className="absolute top-1/4 left-1/3 flex flex-col items-center justify-center z-20 animate-pulse">
+                      <div className="w-8 h-8 bg-emerald-500 text-white rounded-full flex items-center justify-center border-4 border-emerald-300/40 shadow-lg relative">
+                        <MapPin className="w-4 h-4 animate-bounce" />
+                        <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-emerald-400 border-2 border-slate-900" />
+                      </div>
+                      <span className="bg-emerald-900/90 text-emerald-200 text-[8px] font-extrabold px-1.5 py-0.5 rounded border border-emerald-700 mt-1 uppercase tracking-wider">Técnico</span>
+                    </div>
+
+                    {/* Simulated distance tracker */}
+                    <div className="absolute bottom-4 left-4 bg-slate-950/80 border border-slate-800 text-slate-300 text-[9px] font-mono p-2 rounded-xl flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
+                      <span>Distância estimada: <strong>1.4 km</strong> (~6 minutos)</span>
+                    </div>
+                  </div>
+
+                  {/* Informational status updates footer */}
+                  <div className="text-[11px] text-slate-500 leading-relaxed bg-emerald-50 border border-emerald-100 p-3 rounded-2xl flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 text-emerald-600 mt-0.5 flex-shrink-0" />
+                    <span>
+                      Nosso técnico está a caminho do seu endereço carregando todo o material necessário para realizar a limpeza e conservação contratada. Você pode ver atualizações adicionais clicando no chat abaixo.
+                    </span>
+                  </div>
+                </div>
+
+                {/* Footer with closed action */}
+                <div className="px-5 py-4 bg-slate-50 border-t border-slate-100 flex justify-end">
+                  <button
+                    onClick={() => setTrackingOrder(null)}
+                    className="px-4 py-2 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-all"
+                  >
+                    Fechar Radar
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* DIGITAL CORPORATE PAYMENT RECEIPT MODAL */}
+          {showReceiptOrder && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+              <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl relative">
+                
+                {/* Receipt Header */}
+                <div className="bg-gradient-to-r from-emerald-600 to-teal-600 px-6 py-6 text-white text-center">
+                  <div className="w-12 h-12 bg-white/10 rounded-full flex items-center justify-center mx-auto mb-2 border border-white/20">
+                    <Check className="w-6 h-6 text-emerald-100" />
+                  </div>
+                  <h3 className="text-sm font-black uppercase tracking-widest">Recibo de Pagamento</h3>
+                  <p className="text-[10px] text-emerald-200/90 font-mono mt-0.5">ZENTEX SERVIÇOS LTDA</p>
+                </div>
+
+                {/* Receipt Details */}
+                <div className="p-6 space-y-4 font-sans text-slate-800">
+                  <div className="text-center border-b border-slate-100 pb-3">
+                    <span className="text-[10px] text-slate-400 block uppercase font-bold tracking-wider">Valor Pago</span>
+                    <span className="text-2xl font-black font-mono text-slate-800">
+                      R$ {showReceiptOrder.price ? showReceiptOrder.price.toFixed(2).replace('.', ',') : '0,00'}
+                    </span>
+                    <span className="text-[9px] text-slate-400 block mt-1 font-mono">ID Transação: TXN-{showReceiptOrder.id}-{Math.floor(100000 + Math.random() * 900000)}</span>
+                  </div>
+
+                  <div className="space-y-2.5 text-xs">
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Cliente:</span>
+                      <span className="font-bold text-slate-700">{showReceiptOrder.clientName}</span>
+                    </div>
+
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Serviço Contratado:</span>
+                      <span className="font-bold text-slate-700 text-right truncate max-w-[200px]" title={showReceiptOrder.title}>
+                        {showReceiptOrder.title}
+                      </span>
+                    </div>
+
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Meio de Pagamento:</span>
+                      <span className="font-bold text-slate-700 uppercase">
+                        {showReceiptOrder.paymentMethod ? (showReceiptOrder.paymentMethod === 'pix' ? 'Pix Instantâneo' : `Cartão de ${showReceiptOrder.paymentMethod === 'credit' ? 'Crédito' : 'Débito'}`) : 'Crédito Interno'}
+                      </span>
+                    </div>
+
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Data e Hora:</span>
+                      <span className="font-mono text-slate-700">
+                        {showReceiptOrder.paymentDate 
+                          ? new Date(showReceiptOrder.paymentDate).toLocaleString('pt-BR') 
+                          : new Date(showReceiptOrder.createdAt).toLocaleString('pt-BR')}
+                      </span>
+                    </div>
+
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Autenticação:</span>
+                      <span className="font-mono text-[9px] text-emerald-600 font-bold uppercase">Aprovada & Liquidada via Gateway</span>
+                    </div>
+                  </div>
+
+                  {/* Decorative dashed separator */}
+                  <div className="border-t border-dashed border-slate-200 my-4" />
+
+                  <div className="text-[9px] text-slate-400 text-center leading-relaxed">
+                    Este documento serve como comprovante definitivo de pagamento eletrônico para os serviços de conservação prestados pela Zentex. 
+                    Dúvidas ou suporte? Entre em contato pelo WhatsApp (11) 98888-7777 ou envie mensagem para nossa gerência.
+                  </div>
+                </div>
+
+                {/* Receipt Footer Actions */}
+                <div className="px-5 py-4 bg-slate-50 border-t border-slate-100 flex gap-2 justify-end">
+                  <button
+                    onClick={() => {
+                      window.print();
+                    }}
+                    className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center gap-1"
+                  >
+                    <span>Imprimir Comprovante</span>
+                  </button>
+                  <button
+                    onClick={() => setShowReceiptOrder(null)}
+                    className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl transition-all cursor-pointer"
+                  >
+                    Fechar
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* REAL EFI BANK SECURE CHECKOUT MODAL */}
+          {checkoutOrder && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/75 backdrop-blur-sm animate-fade-in">
+              <div className="bg-white border border-slate-100 rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl relative flex flex-col max-h-[90vh]">
+                
+                {/* Secure Checkout Header */}
+                <div className="bg-gradient-to-r from-slate-900 via-slate-850 to-indigo-950 px-6 py-5 text-white flex items-center justify-between shrink-0">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-9 h-9 bg-indigo-500/15 border border-indigo-400/20 rounded-xl flex items-center justify-center">
+                      <Lock className="w-4 h-4 text-indigo-400" />
+                    </div>
+                    <div>
+                      <h3 className="text-xs font-black uppercase tracking-wider leading-none">Zentex Secure Pay</h3>
+                      <span className="text-[8px] text-slate-400 block mt-1 font-mono uppercase">Gateway Homologado Efí Bank mTLS</span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setCheckoutOrder(null)}
+                    disabled={checkoutLoading}
+                    className="w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center text-slate-400 hover:text-white cursor-pointer transition-all border border-white/5"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Main Content Area */}
+                <div className="p-6 overflow-y-auto space-y-5 flex-1">
+                  
+                  {/* Checkout Success Screen */}
+                  {checkoutSuccess ? (
+                    <div className="text-center py-8 space-y-4 animate-scale-up">
+                      <div className="w-16 h-16 bg-emerald-50 rounded-full flex items-center justify-center mx-auto border-2 border-emerald-500">
+                        <Check className="w-8 h-8 text-emerald-600 stroke-[3]" />
+                      </div>
+                      <div>
+                        <h4 className="text-base font-black text-slate-800 uppercase tracking-wider">Pagamento Aprovado!</h4>
+                        <p className="text-[11px] text-slate-500 mt-1 max-w-xs mx-auto">Sua transação foi liquidada em tempo real com a Efí Bank. A ordem de serviço foi atualizada para "Paga".</p>
+                      </div>
+                      <div className="bg-emerald-50/50 rounded-2xl p-4 border border-emerald-100/60 max-w-sm mx-auto">
+                        <span className="text-[9px] text-slate-400 block uppercase font-bold tracking-wider">Autenticação do Gateway</span>
+                        <code className="text-[10px] font-mono text-emerald-800 font-extrabold block mt-0.5 truncate uppercase">
+                          EFI-AUTH-{Math.floor(10000000 + Math.random() * 90000000)}
+                        </code>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      {/* Service Order Recap Header */}
+                      <div className="bg-slate-50 border border-slate-200/60 rounded-2xl p-4 flex items-center justify-between gap-4">
+                        <div className="min-w-0">
+                          <span className="text-slate-400 block text-[8px] uppercase tracking-widest font-bold leading-none">Ordem de Serviço</span>
+                          <span className="font-extrabold text-slate-800 text-xs block mt-1 truncate">#{checkoutOrder.id} - {checkoutOrder.title}</span>
+                          <p className="text-[10px] text-slate-500 truncate mt-0.5">{checkoutOrder.clientAddress}</p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <span className="text-slate-400 block text-[8px] uppercase tracking-widest font-bold leading-none">Total</span>
+                          <span className="font-mono font-black text-base text-slate-900 block mt-1">
+                            R$ {checkoutOrder.price ? checkoutOrder.price.toFixed(2).replace('.', ',') : '0,00'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Payment Method Tabs */}
+                      <div className="grid grid-cols-2 gap-2 bg-slate-100 p-1.5 rounded-2xl border border-slate-200/50">
+                        <button
+                          type="button"
+                          onClick={() => setCheckoutMethod('pix')}
+                          className={`py-2 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all cursor-pointer ${checkoutMethod === 'pix' ? 'bg-white text-indigo-950 shadow-md border border-slate-200/30' : 'text-slate-500 hover:text-slate-800'}`}
+                        >
+                          <Smartphone className="w-3.5 h-3.5" />
+                          <span>Pix Instantâneo</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setCheckoutMethod('card')}
+                          className={`py-2 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all cursor-pointer ${checkoutMethod === 'card' ? 'bg-white text-indigo-950 shadow-md border border-slate-200/30' : 'text-slate-500 hover:text-slate-800'}`}
+                        >
+                          <CreditCard className="w-3.5 h-3.5" />
+                          <span>Cartão de Crédito</span>
+                        </button>
+                      </div>
+
+                      {/* TAB CONTENT: PIX PAY */}
+                      {checkoutMethod === 'pix' && (
+                        <div className="space-y-4">
+                          
+                          {checkoutLoading && !checkoutPixData && (
+                            <div className="text-center py-8 space-y-3">
+                              <div className="w-10 h-10 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
+                              <span className="text-[10px] font-extrabold text-indigo-900 uppercase tracking-widest block">Gerando Pix Seguro na Efí Bank...</span>
+                              <p className="text-[9px] text-slate-400">Estabelecendo canal criptografado mTLS de alta segurança.</p>
+                            </div>
+                          )}
+
+                          {checkoutError && (
+                            <div className="bg-red-50 border border-red-200 p-4 rounded-2xl space-y-2 text-left">
+                              <span className="text-red-700 font-extrabold text-[10px] uppercase tracking-wider block">Erro na Integração do Pix</span>
+                              <p className="text-[10px] text-red-650 leading-relaxed font-mono">{checkoutError}</p>
+                              <button
+                                onClick={() => {
+                                  setCheckoutPixData(null);
+                                  setCheckoutError(null);
+                                  // Trigger retry by updating method
+                                  setCheckoutMethod('pix');
+                                }}
+                                className="px-3 py-1 bg-white hover:bg-red-100 text-red-700 font-bold rounded-lg border border-red-300 text-[9px] uppercase cursor-pointer"
+                              >
+                                Tentar Novamente
+                              </button>
+                            </div>
+                          )}
+
+                          {checkoutPixData && (
+                            <div className="space-y-4 animate-scale-up text-center">
+                              <span className="text-[9px] bg-indigo-50 text-indigo-700 font-black px-2.5 py-1 rounded-full uppercase tracking-wider inline-block">
+                                Pix Gerado via mTLS & Copia-e-Cola Ativo!
+                              </span>
+
+                              {/* QR Code Graphic Frame */}
+                              <div className="relative w-44 h-44 bg-slate-50 border border-slate-200/80 rounded-3xl flex items-center justify-center mx-auto shadow-md overflow-hidden p-3 group">
+                                {checkoutPixData.qrcodeImageBase64 ? (
+                                  <img
+                                    src={checkoutPixData.qrcodeImageBase64}
+                                    alt="QR Code Pix"
+                                    referrerPolicy="no-referrer"
+                                    className="w-full h-full object-contain"
+                                  />
+                                ) : checkoutPixData.qrcodeImageUrl ? (
+                                  <img
+                                    src={checkoutPixData.qrcodeImageUrl}
+                                    alt="QR Code Pix Demo"
+                                    referrerPolicy="no-referrer"
+                                    className="w-full h-full object-contain"
+                                  />
+                                ) : (
+                                  <div className="text-slate-400 text-center text-[10px]">
+                                    <Image className="w-8 h-8 mx-auto mb-1 text-slate-300" />
+                                    <span>QR Code Indisponível</span>
+                                  </div>
+                                )}
+                              </div>
+
+                              <p className="text-[10px] text-slate-500 max-w-xs mx-auto leading-relaxed">
+                                Abra o aplicativo de pagamentos do seu banco, escolha a opção <strong>"Pagar via Pix"</strong> e aponte a câmera para o QR Code acima, ou copie o código abaixo.
+                              </p>
+
+                              {/* Copy & Paste Code */}
+                              <div className="space-y-1.5 text-left">
+                                <label className="text-[10px] font-bold text-slate-500 uppercase">Pix Copia e Cola</label>
+                                <div className="flex gap-1.5">
+                                  <input
+                                    type="text"
+                                    readOnly
+                                    value={checkoutPixData.pixCopiaECola}
+                                    className="flex-1 bg-slate-50 border border-slate-200 font-mono text-[9px] rounded-xl px-3 py-2 text-slate-600 focus:outline-none"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      navigator.clipboard.writeText(checkoutPixData.pixCopiaECola);
+                                      setHasCopiedPix(true);
+                                      setTimeout(() => setHasCopiedPix(false), 2000);
+                                    }}
+                                    className="px-3.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl cursor-pointer transition-all flex items-center gap-1 shrink-0 text-[10px] font-bold"
+                                  >
+                                    <Copy className="w-3.5 h-3.5" />
+                                    <span>{hasCopiedPix ? 'Copiado!' : 'Copiar'}</span>
+                                  </button>
+                                </div>
+                              </div>
+
+                              {checkoutPixData.isDemo && (
+                                <div className="bg-amber-50 border border-amber-100 p-2.5 rounded-xl text-[9px] text-amber-800 text-left leading-relaxed">
+                                  <strong>Atenção:</strong> Sandbox ativo para homologação técnica. O QR Code gerado é interativo e simula a API real do Banco Central com fins de demonstração.
+                                </div>
+                              )}
+
+                              <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-3">
+                                <span className="text-[9px] text-slate-400 font-mono">TXID: <strong className="text-slate-600">{checkoutPixData.txid.substring(0, 16)}...</strong></span>
+                                <button
+                                  type="button"
+                                  onClick={handleConfirmPixPayment}
+                                  disabled={checkoutLoading}
+                                  className="px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white text-xs font-bold rounded-xl transition-all shadow-md cursor-pointer active:scale-95 duration-150 shrink-0 flex items-center gap-1.5"
+                                >
+                                  {checkoutLoading ? (
+                                    <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                                  ) : (
+                                    <CheckCircle className="w-3.5 h-3.5" />
+                                  )}
+                                  <span>Já Realizei o Pagamento Pix</span>
+                                </button>
+                              </div>
+                            </div>
+                          )}
+
+                        </div>
+                      )}
+
+                      {/* TAB CONTENT: CREDIT CARD PAY */}
+                      {checkoutMethod === 'card' && (
+                        <form onSubmit={handleConfirmCardPayment} className="space-y-3 text-left">
+                          
+                          <div>
+                            <label className="text-[10px] font-bold text-slate-500 uppercase">Nome do Titular (conforme cartão)</label>
+                            <input
+                              type="text"
+                              required
+                              placeholder="Ex: JOAO S SILVA"
+                              value={checkoutCardName}
+                              onChange={(e) => setCheckoutCardName(e.target.value.toUpperCase())}
+                              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-xs text-slate-800 mt-1 focus:outline-none focus:border-indigo-500 focus:bg-white transition-all shadow-inner"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="text-[10px] font-bold text-slate-500 uppercase">Número do Cartão</label>
+                            <div className="relative mt-1">
+                              <input
+                                type="text"
+                                required
+                                placeholder="0000 0000 0000 0000"
+                                maxLength={19}
+                                value={checkoutCardNumber}
+                                onChange={(e) => setCheckoutCardNumber(e.target.value.replace(/\D/g, '').replace(/(\d{4})/g, '$1 ').trim())}
+                                className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-3.5 pr-10 py-2 text-xs text-slate-800 focus:outline-none focus:border-indigo-500 focus:bg-white transition-all shadow-inner font-mono"
+                              />
+                              <CreditCard className="w-4 h-4 text-slate-400 absolute right-3 top-2.5" />
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <label className="text-[10px] font-bold text-slate-500 uppercase">Validade (MM/AA)</label>
+                              <input
+                                type="text"
+                                required
+                                placeholder="Ex: 12/29"
+                                maxLength={5}
+                                value={checkoutCardExpiry}
+                                onChange={(e) => {
+                                  let val = e.target.value.replace(/\D/g, '');
+                                  if (val.length > 2) val = val.substring(0, 2) + '/' + val.substring(2, 4);
+                                  setCheckoutCardExpiry(val);
+                                }}
+                                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-xs text-slate-800 mt-1 focus:outline-none focus:border-indigo-500 focus:bg-white transition-all shadow-inner font-mono"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-[10px] font-bold text-slate-500 uppercase">CVC / Código de Segurança</label>
+                              <input
+                                type="password"
+                                required
+                                maxLength={4}
+                                placeholder="Ex: 123"
+                                value={checkoutCardCVV}
+                                onChange={(e) => setCheckoutCardCVV(e.target.value.replace(/\D/g, ''))}
+                                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-xs text-slate-800 mt-1 focus:outline-none focus:border-indigo-500 focus:bg-white transition-all shadow-inner font-mono"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <label className="text-[10px] font-bold text-slate-500 uppercase">CPF / CNPJ do Titular</label>
+                              <input
+                                type="text"
+                                required
+                                placeholder="Ex: 000.000.000-00"
+                                value={checkoutCardCpf}
+                                onChange={(e) => setCheckoutCardCpf(e.target.value)}
+                                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-xs text-slate-800 mt-1 focus:outline-none focus:border-indigo-500 focus:bg-white transition-all shadow-inner font-mono"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-[10px] font-bold text-slate-500 uppercase">E-mail para Recibo</label>
+                              <input
+                                type="email"
+                                required
+                                placeholder="Ex: joao@email.com"
+                                value={checkoutCardEmail}
+                                onChange={(e) => setCheckoutCardEmail(e.target.value)}
+                                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-xs text-slate-800 mt-1 focus:outline-none focus:border-indigo-500 focus:bg-white transition-all shadow-inner"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-3">
+                            <span className="text-[9px] text-slate-400 block leading-none flex items-center gap-1 font-mono uppercase">
+                              <Lock className="w-3 h-3 text-slate-400" /> Criptografia SSL AES-256
+                            </span>
+                            <button
+                              type="submit"
+                              disabled={checkoutLoading}
+                              className="px-6 py-2.5 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white text-xs font-bold rounded-xl transition-all shadow-md cursor-pointer active:scale-95 duration-150 shrink-0 flex items-center gap-1.5"
+                            >
+                              {checkoutLoading ? (
+                                <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                              ) : (
+                                <CreditCard className="w-3.5 h-3.5" />
+                              )}
+                              <span>Autorizar Transação de R$ {checkoutOrder.price ? checkoutOrder.price.toFixed(2).replace('.', ',') : '0,00'}</span>
+                            </button>
+                          </div>
+                        </form>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* TAB 3: CHAT SUPPORT */}
+      {activeTab === 'chat' && (
+        <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm max-w-3xl mx-auto flex flex-col h-[550px]">
+          
+          {/* Header */}
+          <div className="flex items-center gap-3 border-b border-slate-100 pb-3 mb-4">
+            <div className="w-10 h-10 bg-emerald-50 rounded-full border border-emerald-100 flex items-center justify-center text-emerald-600">
+              <MessageSquare className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider">Atendimento ao Cliente Zentex</h3>
+              <p className="text-[10px] text-slate-400 font-medium">Tire suas dúvidas instantaneamente ou envie instruções operacionais para os gerentes.</p>
+            </div>
+          </div>
+
+          {/* Interactive Chat Mode Toggle Selector */}
+          <div className="flex bg-slate-100 p-1 rounded-2xl mb-4 border border-slate-200">
+            <button 
+              type="button"
+              onClick={() => setChatMode('bot')}
+              className={`flex-1 py-2 text-[10px] font-black uppercase tracking-wider rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                chatMode === 'bot' 
+                  ? 'bg-white text-emerald-700 shadow-sm' 
+                  : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              <span>🤖 Zentex Bot (Virtual)</span>
+            </button>
+            <button 
+              type="button"
+              onClick={() => {
+                setChatMode('manager');
+                setTimeout(() => {
+                  const container = document.getElementById('client-chat-scroll');
+                  if (container) container.scrollTop = container.scrollHeight;
+                }, 100);
+              }}
+              className={`flex-1 py-2 text-[10px] font-black uppercase tracking-wider rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                chatMode === 'manager' 
+                  ? 'bg-white text-emerald-700 shadow-sm' 
+                  : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              <span>💬 Suporte (Gerência)</span>
+            </button>
+          </div>
+
+          {/* Messages Area */}
+          <div 
+            id={chatMode === 'bot' ? 'bot-chat-scroll' : 'client-chat-scroll'}
+            className="flex-1 overflow-y-auto space-y-3 p-3 bg-slate-50 border border-slate-150 rounded-2xl shadow-inner min-h-0"
+          >
+            {chatMode === 'bot' ? (
+              botMessages.map((msg) => {
+                const isMe = msg.senderId === currentUser.id;
+                return (
+                  <div 
+                    key={msg.id} 
+                    className={`flex ${isMe ? 'justify-end' : 'justify-start'} items-end gap-2`}
+                  >
+                    {!isMe && (
+                      <div className="w-7 h-7 bg-emerald-600 text-white rounded-full flex items-center justify-center text-[10px] font-black border border-white shadow-sm shrink-0">
+                        Z
+                      </div>
+                    )}
+                    
+                    <div className="max-w-[85%] space-y-0.5">
+                      <span className="text-[8px] text-slate-400 font-bold block ml-1.5 uppercase">
+                        {isMe ? 'Você' : 'Zentex Bot (Virtual)'}
+                      </span>
+                      <div className={`p-3 rounded-2xl text-[11px] leading-relaxed shadow-sm ${
+                        isMe 
+                          ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-br-none' 
+                          : 'bg-white text-slate-800 border border-slate-200/80 rounded-bl-none'
+                      }`}>
+                        <p className="whitespace-pre-wrap break-words">{msg.text}</p>
+                      </div>
+                      <span className="text-[8px] text-slate-400 font-mono block text-right pr-1.5">
+                        {new Date(msg.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })
+            ) : clientChatMessages.length === 0 ? (
+              <div className="text-center py-16 space-y-2.5">
+                <span className="text-[10px] bg-emerald-100/50 text-emerald-800 px-3 py-1 rounded-full font-black uppercase tracking-wider">Suporte Direto</span>
+                <h4 className="text-xs font-bold text-slate-650">Alguma dúvida ou instrução especial?</h4>
+                <p className="text-[10px] text-slate-400 max-w-sm mx-auto">Envie uma mensagem abaixo e ela será repassada diretamente à nossa gerência para ajudá-lo.</p>
+              </div>
+            ) : (
+              clientChatMessages.map((msg) => {
+                const isMe = msg.senderId === currentUser.id;
+                return (
+                  <div 
+                    key={msg.id} 
+                    className={`flex ${isMe ? 'justify-end' : 'justify-start'} items-end gap-2`}
+                  >
+                    {!isMe && (
+                      <div className="w-7 h-7 bg-slate-200 rounded-full flex items-center justify-center text-[10px] font-bold border border-white shadow-sm shrink-0">
+                        Z
+                      </div>
+                    )}
+                    
+                    <div className="max-w-[80%] space-y-0.5">
+                      <span className="text-[8px] text-slate-400 font-bold block ml-1.5 uppercase">
+                        {isMe ? 'Você' : `${msg.senderName} (Suporte)`}
+                      </span>
+                      <div className={`p-3 rounded-2xl text-[11px] leading-relaxed shadow-sm ${
+                        isMe 
+                          ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-br-none' 
+                          : 'bg-white text-slate-800 border border-slate-200/80 rounded-bl-none'
+                      }`}>
+                        <p className="whitespace-pre-wrap break-words">{msg.text}</p>
+                      </div>
+                      <span className="text-[8px] text-slate-400 font-mono block text-right pr-1.5">
+                        {new Date(msg.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+
+            {/* Simulated Bot Typing Indicator */}
+            {chatMode === 'bot' && isBotTyping && (
+              <div className="flex justify-start items-end gap-2 animate-pulse">
+                <div className="w-7 h-7 bg-emerald-600 text-white rounded-full flex items-center justify-center text-[10px] font-black border border-white shadow-sm shrink-0">
+                  Z
+                </div>
+                <div className="max-w-[80%] space-y-0.5">
+                  <span className="text-[8px] text-slate-400 font-bold block ml-1.5 uppercase">Zentex Bot</span>
+                  <div className="bg-white text-slate-500 border border-slate-200/85 p-3 rounded-2xl rounded-bl-none text-[10px] shadow-sm flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" />
+                    <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce [animation-delay:0.2s]" />
+                    <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce [animation-delay:0.4s]" />
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Quick Support FAQ Helper Chips (Only on Bot mode) */}
+          {chatMode === 'bot' && (
+            <div className="flex flex-wrap gap-1.5 mt-3 px-1">
+              <button
+                type="button"
+                onClick={() => handleBotResponse('Quais são os pacotes de serviços e preços fixos?')}
+                className="text-[9px] bg-emerald-50 hover:bg-emerald-100 border border-emerald-150 text-emerald-700 font-black px-3 py-1.5 rounded-full transition-all cursor-pointer"
+              >
+                📦 Ver Pacotes & Preços
+              </button>
+              <button
+                type="button"
+                onClick={() => handleBotResponse('Como funciona o rastreamento do técnico?')}
+                className="text-[9px] bg-emerald-50 hover:bg-emerald-100 border border-emerald-150 text-emerald-700 font-black px-3 py-1.5 rounded-full transition-all cursor-pointer"
+              >
+                📡 Como rastrear o Técnico?
+              </button>
+              <button
+                type="button"
+                onClick={() => handleBotResponse('Como posso redefinir ou alterar meu cadastro?')}
+                className="text-[9px] bg-emerald-50 hover:bg-emerald-100 border border-emerald-150 text-emerald-700 font-black px-3 py-1.5 rounded-full transition-all cursor-pointer"
+              >
+                ⚙️ Como editar meu Cadastro?
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setChatMode('manager');
+                  setTimeout(() => {
+                    const container = document.getElementById('client-chat-scroll');
+                    if (container) container.scrollTop = container.scrollHeight;
+                  }, 100);
+                }}
+                className="text-[9px] bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 font-black px-3 py-1.5 rounded-full transition-all cursor-pointer"
+              >
+                👤 Falar com Humano
+              </button>
+            </div>
+          )}
+
+          {/* Form */}
+          <form 
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!chatText.trim()) return;
+              if (chatMode === 'bot') {
+                const textToSend = chatText.trim();
+                setChatText('');
+                handleBotResponse(textToSend);
+              } else {
+                handleSendChat(e);
+              }
+            }} 
+            className="mt-3 flex gap-2"
+          >
+            <input
+              type="text"
+              placeholder={chatMode === 'bot' ? "Digite uma dúvida sobre pacotes, valores, rastreamento..." : "Digite sua mensagem para a gerência humana..."}
+              value={chatText}
+              onChange={(e) => setChatText(e.target.value)}
+              className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs text-slate-800 focus:outline-none focus:border-emerald-500 focus:bg-white transition-all shadow-inner"
+            />
+            <button
+              type="submit"
+              className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold p-3 rounded-xl transition-all shadow-md cursor-pointer active:scale-95 duration-150 shrink-0"
+              title="Enviar Mensagem"
+            >
+              <Send className="w-4 h-4" />
+            </button>
+          </form>
+
+        </div>
+      )}
+
+      {/* TAB 4: PROFILE EDIT */}
+      {activeTab === 'profile' && (
+        <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
+          <div className="mb-6 border-b border-slate-100 pb-4">
+            <h3 className="text-sm font-black text-slate-800 flex items-center gap-2">
+              <UserCheck className="w-5 h-5 text-emerald-600" />
+              <span>Dados do Meu Cadastro</span>
+            </h3>
+            <p className="text-xs text-slate-500 mt-1">Atualize seus dados pessoais e de contato para facilitar os agendamentos operacionais.</p>
+          </div>
+
+          <form onSubmit={handleUpdateProfile} className="space-y-5 max-w-2xl">
+            {saveSuccess && (
+              <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 font-bold text-xs animate-pulse">
+                Cadastro atualizado com sucesso!
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 uppercase">Nome Completo *</label>
+                <input
+                  type="text"
+                  required
+                  value={profileName}
+                  onChange={(e) => setProfileName(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 mt-1 focus:outline-none focus:border-emerald-500 focus:bg-white transition-all shadow-inner"
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 uppercase">E-mail (Login)</label>
+                <input
+                  type="email"
+                  disabled
+                  value={currentUser.email}
+                  className="w-full bg-slate-100 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-400 mt-1 font-mono focus:outline-none"
+                  title="Não é possível alterar o e-mail de acesso."
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 uppercase">Celular / WhatsApp *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Ex: (11) 99999-8888"
+                  value={profilePhone}
+                  onChange={(e) => setProfilePhone(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 mt-1 focus:outline-none focus:border-emerald-500 focus:bg-white transition-all shadow-inner"
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 uppercase">Foto do Perfil (URL)</label>
+                <input
+                  type="text"
+                  placeholder="URL da foto..."
+                  value={profileAvatar}
+                  onChange={(e) => setProfileAvatar(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 mt-1 focus:outline-none focus:border-emerald-500 focus:bg-white transition-all shadow-inner"
+                />
+              </div>
+
+              <div className="sm:col-span-2">
+                <label className="text-[10px] font-bold text-slate-500 uppercase">Endereço Residencial / Corporativo Principal *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Ex: Alameda Lorena, 1200 - Jardins, São Paulo - SP"
+                  value={profileAddress}
+                  onChange={(e) => setProfileAddress(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 mt-1 focus:outline-none focus:border-emerald-500 focus:bg-white transition-all shadow-inner"
+                />
+                <span className="text-[9px] text-slate-400 mt-1 block">Este endereço servirá como padrão ao fazer novas solicitações.</span>
+              </div>
+            </div>
+
+            <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
+              <button
+                type="submit"
+                className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-6 py-2.5 rounded-xl transition-all shadow-md cursor-pointer active:scale-95 duration-150"
+              >
+                Salvar Alterações
+              </button>
+
+              <div className="text-right text-[9px] text-slate-400">
+                <span>Tipo de Acesso: <strong>Cliente Zentex</strong></span>
+                <span className="block mt-0.5">ID: <code className="font-mono">{currentUser.id}</code></span>
+              </div>
+            </div>
+          </form>
+        </div>
+      )}
+
+    </div>
+  );
+}

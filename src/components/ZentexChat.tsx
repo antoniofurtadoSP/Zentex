@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { User, ChatMessage } from '../types';
-import { Send, Hash, MessageSquare, Shield, Clock, Users, ArrowRightLeft, Volume2 } from 'lucide-react';
+import { getAvatarUrl } from '../utils';
+import { Send, Hash, MessageSquare, Shield, Clock, Users, ArrowRightLeft, Volume2, ArrowDown } from 'lucide-react';
 
 interface ZentexChatProps {
   currentUser: User;
@@ -14,6 +15,10 @@ export default function ZentexChat({ currentUser, users, messages, onSendMessage
   const [inputText, setInputText] = useState('');
   const [activeChannel, setActiveChannel] = useState<'general' | string>('general'); // 'general' or employeeUserId
   const chatEndRef = useRef<HTMLDivElement | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const [showScrollButton, setShowScrollButton] = useState(false);
+  const prevMessagesCountRef = useRef(messages.length);
+  const prevActiveChannelRef = useRef(activeChannel);
 
   // Auto-poll messages every 4 seconds to simulate real-time socket communication
   useEffect(() => {
@@ -23,10 +28,48 @@ export default function ZentexChat({ currentUser, users, messages, onSendMessage
     return () => clearInterval(interval);
   }, [onRefresh]);
 
-  // Scroll to bottom on new messages
+  const scrollToBottom = (smooth = true) => {
+    chatEndRef.current?.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto' });
+  };
+
+  const handleScroll = () => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    
+    // If the scroll is more than 180px away from the bottom, show the scroll button
+    const isScrolledUp = container.scrollHeight - container.scrollTop - container.clientHeight > 180;
+    setShowScrollButton(isScrolledUp);
+  };
+
+  // Smart scroll effect to prevent locking/freezing
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, activeChannel]);
+    const container = scrollContainerRef.current;
+
+    // 1. If we switched channels, scroll to bottom immediately (instant, no smooth scrolling)
+    if (activeChannel !== prevActiveChannelRef.current) {
+      scrollToBottom(false);
+      prevActiveChannelRef.current = activeChannel;
+      prevMessagesCountRef.current = messages.length;
+      return;
+    }
+
+    // 2. If the message count increased, scroll to bottom if it's our own or if we are already at the bottom
+    if (messages.length > prevMessagesCountRef.current) {
+      const lastMessage = messages[messages.length - 1];
+      const isMyMessage = lastMessage?.senderId === currentUser.id;
+
+      if (container) {
+        const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 150;
+        if (isMyMessage || isNearBottom) {
+          scrollToBottom(true);
+        }
+      } else {
+        scrollToBottom(true);
+      }
+    }
+
+    prevMessagesCountRef.current = messages.length;
+  }, [messages, activeChannel, currentUser.id]);
 
   const handleSend = (e: React.FormEvent) => {
     e.preventDefault();
@@ -42,9 +85,21 @@ export default function ZentexChat({ currentUser, users, messages, onSendMessage
     if (activeChannel === 'general') {
       return !msg.receiverId; // general channel has no receiverId
     } else {
-      // Direct message between currentUser and activeChannel (employee)
+      // Direct message between currentUser and activeChannel (employee OR client)
       const isFromMeToActive = msg.senderId === currentUser.id && msg.receiverId === activeChannel;
       const isFromActiveToMe = msg.senderId === activeChannel && msg.receiverId === currentUser.id;
+      
+      const activeUser = users.find(u => u.id === activeChannel);
+      const isActiveClient = activeUser?.role === 'client';
+      
+      if (isActiveClient) {
+        // Match client sending to any admin (e.g. admin1, admin2, or generic 'admin')
+        const isFromClientToAdmins = msg.senderId === activeChannel && (msg.receiverId === currentUser.id || msg.receiverId === 'admin1' || msg.receiverId === 'admin2' || msg.receiverId === 'admin');
+        // Match any admin sending to client
+        const isFromAdminsToClient = (msg.senderRole === 'admin' || msg.senderId === 'admin1' || msg.senderId === 'admin2') && msg.receiverId === activeChannel;
+        return isFromClientToAdmins || isFromAdminsToClient;
+      }
+      
       return isFromMeToActive || isFromActiveToMe;
     }
   });
@@ -52,6 +107,7 @@ export default function ZentexChat({ currentUser, users, messages, onSendMessage
   // Count unread or list active participants
   const otherEmployees = users.filter(u => u.role === 'employee' && u.id !== currentUser.id);
   const otherAdmins = users.filter(u => u.role === 'admin' && u.id !== currentUser.id);
+  const clients = users.filter(u => u.role === 'client');
 
   return (
     <div className="w-full h-[500px] bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm flex">
@@ -94,7 +150,7 @@ export default function ZentexChat({ currentUser, users, messages, onSendMessage
                       }`}
                     >
                       <div className="relative">
-                        <img src={emp.avatar} alt={emp.name} className="w-5 h-5 rounded-full object-cover border border-slate-100" />
+                        <img src={getAvatarUrl(emp)} alt={emp.name} className="w-5 h-5 rounded-full object-cover border border-slate-100" />
                         <span className={`absolute bottom-0 right-0 w-1.5 h-1.5 rounded-full ${
                           emp.status === 'working' ? 'bg-emerald-500' : emp.status === 'idle' ? 'bg-amber-400' : 'bg-slate-400'
                         }`} />
@@ -117,7 +173,7 @@ export default function ZentexChat({ currentUser, users, messages, onSendMessage
                       }`}
                     >
                       <div className="relative">
-                        <img src={adm.avatar} alt={adm.name} className="w-5 h-5 rounded-full object-cover border border-slate-100" />
+                        <img src={getAvatarUrl(adm)} alt={adm.name} className="w-5 h-5 rounded-full object-cover border border-slate-100" />
                         <Shield className="absolute -bottom-1 -right-1 w-3 h-3 text-emerald-600 fill-white" />
                       </div>
                       <span className="truncate">{adm.name}</span>
@@ -127,11 +183,53 @@ export default function ZentexChat({ currentUser, users, messages, onSendMessage
               )}
             </div>
           </div>
+
+          {currentUser.role === 'admin' && clients.length > 0 && (
+            <div className="mt-4">
+              <h4 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2.5 px-2">
+                Atendimento ao Cliente
+              </h4>
+              <div className="space-y-1">
+                {clients.map(cli => {
+                  const isActive = activeChannel === cli.id;
+                  const clientMsgs = messages.filter(m => m.senderId === cli.id || m.receiverId === cli.id);
+                  const hasMessages = clientMsgs.length > 0;
+
+                  return (
+                    <button
+                      key={cli.id}
+                      onClick={() => setActiveChannel(cli.id)}
+                      className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
+                        isActive
+                          ? 'bg-blue-55 text-blue-700 border border-blue-100 bg-blue-50'
+                          : 'text-slate-600 hover:text-slate-950 hover:bg-slate-100'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="relative shrink-0">
+                          <img src={getAvatarUrl(cli)} alt={cli.name} className="w-5 h-5 rounded-full object-cover border border-slate-100" />
+                          <span className={`absolute bottom-0 right-0 w-1.5 h-1.5 rounded-full ${
+                            cli.status === 'working' ? 'bg-emerald-500' : 'bg-slate-400'
+                          }`} />
+                        </div>
+                        <span className="truncate">{cli.name}</span>
+                      </div>
+                      {hasMessages && (
+                        <span className="text-[8px] bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded-full font-black uppercase tracking-wider shrink-0">
+                          Ativo
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Current User Quick Badge */}
         <div className="p-3 border-t border-slate-250 bg-slate-100/50 flex items-center gap-2.5">
-          <img src={currentUser.avatar} alt={currentUser.name} className="w-8 h-8 rounded-full object-cover border border-slate-200" />
+          <img src={getAvatarUrl(currentUser)} alt={currentUser.name} className="w-8 h-8 rounded-full object-cover border border-slate-200" />
           <div className="min-w-0">
             <p className="text-xs font-bold text-slate-800 truncate">{currentUser.name}</p>
             <p className="text-[9px] text-slate-500 uppercase tracking-widest">{currentUser.role === 'admin' ? 'Gerente' : 'Técnico'}</p>
@@ -140,7 +238,7 @@ export default function ZentexChat({ currentUser, users, messages, onSendMessage
       </div>
 
       {/* Main Chat Board Area */}
-      <div className="flex-1 flex flex-col justify-between bg-white">
+      <div className="flex-1 flex flex-col justify-between bg-white min-w-0">
         
         {/* Chat Header */}
         <div className="px-5 py-3 border-b border-slate-150 bg-white/95 backdrop-blur flex items-center justify-between">
@@ -171,90 +269,110 @@ export default function ZentexChat({ currentUser, users, messages, onSendMessage
           </button>
         </div>
 
-        {/* Message Stream */}
-        <div className="flex-1 overflow-y-auto p-5 space-y-4 bg-slate-50/30">
-          {filteredMessages.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center text-center p-6">
-              <div className="w-12 h-12 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 mb-3 border border-slate-200">
-                <MessageSquare className="w-5 h-5" />
+        {/* Message Stream Container */}
+        <div className="flex-1 relative flex flex-col min-h-0 bg-slate-50/30">
+          <div 
+            ref={scrollContainerRef}
+            onScroll={handleScroll}
+            className="flex-1 overflow-y-auto p-5 space-y-4"
+          >
+            {filteredMessages.length === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center text-center p-6">
+                <div className="w-12 h-12 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 mb-3 border border-slate-200">
+                  <MessageSquare className="w-5 h-5" />
+                </div>
+                <p className="text-xs font-semibold text-slate-500">Sem histórico de mensagens</p>
+                <p className="text-[10px] text-slate-400 max-w-xs mt-1">
+                  {activeChannel === 'general'
+                    ? 'Escreva uma mensagem geral para alertar toda a equipe externa.'
+                    : 'Inicie uma conversa direta para alinhar detalhes de execução ou enviar feedback.'}
+                </p>
               </div>
-              <p className="text-xs font-semibold text-slate-500">Sem histórico de mensagens</p>
-              <p className="text-[10px] text-slate-400 max-w-xs mt-1">
-                {activeChannel === 'general'
-                  ? 'Escreva uma mensagem geral para alertar toda a equipe externa.'
-                  : 'Inicie uma conversa direta para alinhar detalhes de execução ou enviar feedback.'}
-              </p>
-            </div>
-          ) : (
-            filteredMessages.map((msg) => {
-              const isMe = msg.senderId === currentUser.id;
-              const msgDate = new Date(msg.timestamp);
-              const formattedTime = msgDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+            ) : (
+              filteredMessages.map((msg) => {
+                const isMe = msg.senderId === currentUser.id;
+                const msgDate = new Date(msg.timestamp);
+                const formattedTime = msgDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
-              return (
-                <div key={msg.id} className={`flex gap-3 max-w-[85%] ${isMe ? 'ml-auto flex-row-reverse' : ''}`}>
-                  {/* Avatar */}
-                  {!isMe && (
-                    <img
-                      src={users.find(u => u.id === msg.senderId)?.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=80'}
-                      alt={msg.senderName}
-                      className="w-8 h-8 rounded-full object-cover border border-slate-200 mt-1"
-                    />
-                  )}
-                  
-                  <div>
-                    {/* Name Header */}
+                return (
+                  <div key={msg.id} className={`flex gap-3 max-w-[85%] ${isMe ? 'ml-auto flex-row-reverse' : ''}`}>
+                    {/* Avatar */}
                     {!isMe && (
-                      <div className="flex items-center gap-1.5 mb-1">
-                        <span className="text-[10px] font-bold text-slate-700">{msg.senderName}</span>
-                        <span className={`text-[8px] uppercase tracking-wider px-1 py-0.5 rounded border ${
-                          msg.senderRole === 'admin' 
-                            ? 'bg-rose-50 text-rose-700 border-rose-100' 
-                            : 'bg-emerald-50 text-emerald-700 border-emerald-100'
+                      <img
+                        src={getAvatarUrl(users.find(u => u.id === msg.senderId))}
+                        alt={msg.senderName}
+                        className="w-8 h-8 rounded-full object-cover border border-slate-200 mt-1"
+                      />
+                    )}
+                    
+                    <div>
+                      {/* Name Header */}
+                      {!isMe && (
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <span className="text-[10px] font-bold text-slate-700">{msg.senderName}</span>
+                          <span className={`text-[8px] uppercase tracking-wider px-1 py-0.5 rounded border ${
+                            msg.senderRole === 'admin' 
+                              ? 'bg-rose-50 text-rose-700 border-rose-100' 
+                              : msg.senderRole === 'client'
+                              ? 'bg-blue-50 text-blue-700 border-blue-100'
+                              : 'bg-emerald-50 text-emerald-700 border-emerald-100'
+                          }`}>
+                            {msg.senderRole === 'admin' ? 'Gerente' : msg.senderRole === 'client' ? 'Cliente' : 'Técnico'}
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Bubble Container */}
+                      <div className={`p-3 rounded-2xl text-xs relative leading-relaxed shadow-sm ${
+                        isMe 
+                          ? 'bg-emerald-600 text-white font-medium rounded-tr-none' 
+                          : 'bg-white border border-slate-200 text-slate-800 rounded-tl-none'
+                      }`}>
+                        <div className="flex justify-between gap-4 items-start">
+                          <p className="flex-1 whitespace-pre-wrap">{msg.text}</p>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const speechText = `${msg.senderName} disse: ${msg.text}`;
+                              if ((window as any).zentexSpeakForce) {
+                                (window as any).zentexSpeakForce(speechText);
+                              }
+                            }}
+                            className={`p-1 rounded hover:bg-black/10 transition-colors shrink-0 cursor-pointer ${
+                              isMe ? 'text-white/70 hover:text-white' : 'text-slate-400 hover:text-slate-700'
+                            }`}
+                            title="Narrar mensagem"
+                          >
+                            <Volume2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                        
+                        {/* Timestamp */}
+                        <span className={`block text-[9px] mt-1.5 text-right ${
+                          isMe ? 'text-white/80' : 'text-slate-400'
                         }`}>
-                          {msg.senderRole === 'admin' ? 'Gerente' : 'Técnico'}
+                          {formattedTime}
                         </span>
                       </div>
-                    )}
-
-                    {/* Bubble Container */}
-                    <div className={`p-3 rounded-2xl text-xs relative leading-relaxed shadow-sm ${
-                      isMe 
-                        ? 'bg-emerald-650 text-white font-medium rounded-tr-none' 
-                        : 'bg-white border border-slate-200 text-slate-800 rounded-tl-none'
-                    }`}>
-                      <div className="flex justify-between gap-4 items-start">
-                        <p className="flex-1">{msg.text}</p>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const speechText = `${msg.senderName} disse: ${msg.text}`;
-                            if ((window as any).zentexSpeakForce) {
-                              (window as any).zentexSpeakForce(speechText);
-                            }
-                          }}
-                          className={`p-1 rounded hover:bg-black/10 transition-colors shrink-0 cursor-pointer ${
-                            isMe ? 'text-white/70 hover:text-white' : 'text-slate-400 hover:text-slate-700'
-                          }`}
-                          title="Narrar mensagem"
-                        >
-                          <Volume2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                      
-                      {/* Timestamp */}
-                      <span className={`block text-[9px] mt-1.5 text-right ${
-                        isMe ? 'text-white/80' : 'text-slate-400'
-                      }`}>
-                        {formattedTime}
-                      </span>
                     </div>
                   </div>
-                </div>
-              );
-            })
+                );
+              })
+            )}
+            <div ref={chatEndRef} />
+          </div>
+
+          {/* Floating Scroll to Bottom Button */}
+          {showScrollButton && (
+            <button
+              type="button"
+              onClick={() => scrollToBottom(true)}
+              className="absolute bottom-4 right-6 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white px-3.5 py-2 rounded-full shadow-lg hover:shadow-xl transition-all flex items-center gap-1.5 text-[10px] font-extrabold z-10 border border-emerald-400/20"
+            >
+              <ArrowDown className="w-3.5 h-3.5 animate-bounce" />
+              <span>Ver novas mensagens</span>
+            </button>
           )}
-          <div ref={chatEndRef} />
         </div>
 
         {/* Floating Switch Channel for Mobile View */}
@@ -279,7 +397,12 @@ export default function ZentexChat({ currentUser, users, messages, onSendMessage
                 className="bg-white text-slate-600 text-[9px] font-bold px-2.5 py-1 rounded-md border border-slate-200 focus:outline-none"
               >
                 <option value="general">Geral</option>
-                {otherEmployees.map(e => <option key={e.id} value={e.id}>{e.name.split(' ')[0]}</option>)}
+                <optgroup label="Técnicos">
+                  {otherEmployees.map(e => <option key={e.id} value={e.id}>{e.name.split(' ')[0]}</option>)}
+                </optgroup>
+                <optgroup label="Clientes">
+                  {clients.map(c => <option key={c.id} value={c.id}>{c.name.split(' ')[0]}</option>)}
+                </optgroup>
               </select>
             ) : (
               <select
@@ -305,7 +428,7 @@ export default function ZentexChat({ currentUser, users, messages, onSendMessage
           />
           <button
             type="submit"
-            className="p-2.5 bg-emerald-650 hover:bg-emerald-600 active:scale-95 text-white rounded-xl font-bold transition-all flex items-center justify-center shadow-sm"
+            className="p-2.5 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white rounded-xl font-bold transition-all flex items-center justify-center shadow-sm"
           >
             <Send className="w-4 h-4" />
           </button>

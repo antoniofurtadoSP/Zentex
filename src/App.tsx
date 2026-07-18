@@ -2,10 +2,14 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { User, ServiceOrder, ChatMessage, TimeCard } from './types';
 import AdminDashboard from './components/AdminDashboard';
 import EmployeeDashboard from './components/EmployeeDashboard';
+import ClientDashboard from './components/ClientDashboard';
+import ZentexLogo from './components/ZentexLogo';
+import ZentexAuth from './components/ZentexAuth';
+import { getAvatarUrl } from './utils';
 import { 
   Shield, Hammer, Users, RefreshCw, AlertCircle, Sparkles, Navigation, 
   Accessibility, Volume2, VolumeX, Keyboard, Sun, Moon, Eye, Contrast, 
-  Check, X, Plus, Minus, Info 
+  Check, X, Plus, Minus, Info, LogOut, Lock, Key, Mail, Phone, UserCheck 
 } from 'lucide-react';
 
 export default function App() {
@@ -76,7 +80,47 @@ export default function App() {
     localStorage.setItem('zentex-voice', String(voiceEnabled));
   }, [voiceEnabled]);
 
-  // Load everything from DB
+  // Client-side SVG-to-PNG fallback compiler for maximum reliability of PWA and mobile home-screen icons
+  useEffect(() => {
+    const ensurePngLogos = async () => {
+      try {
+        const checkRes = await fetch('/logo.png', { method: 'HEAD' });
+        if (checkRes.ok) return; // Logo PNG already exists, skip client rendering
+
+        const response = await fetch('/logo.svg');
+        if (!response.ok) return;
+        const svgText = await response.text();
+
+        const img = new Image();
+        const svgBlob = new Blob([svgText], { type: 'image/svg+xml;charset=utf-8' });
+        const url = URL.createObjectURL(svgBlob);
+
+        img.onload = async () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = 512;
+          canvas.height = 512;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, 512, 512);
+            const base64Png = canvas.toDataURL('image/png');
+            await fetch('/api/save-logo-png', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ image: base64Png, size: 512 })
+            });
+            console.log('PNG logo fallback generated client-side and cached on backend successfully.');
+          }
+          URL.revokeObjectURL(url);
+        };
+        img.src = url;
+      } catch (err) {
+        console.warn('Client-side PNG rendering fallback failed or skipped:', err);
+      }
+    };
+    ensurePngLogos();
+  }, []);
+
+  // Load everything from DB and sync current user session
   const loadData = useCallback(async () => {
     try {
       const response = await fetch('/api/data');
@@ -86,17 +130,17 @@ export default function App() {
       const data = await response.json();
       setDb(data);
       
-      // Initialize default user on first load
-      if (!currentUser && data.users && data.users.length > 0) {
-        // default to the admin (Antonio)
-        const defaultUser = data.users.find((u: User) => u.id === 'admin1') || data.users[0];
-        setCurrentUser(defaultUser);
-      } else if (currentUser) {
-        // Keep current user updated with latest state from server
-        const updatedMe = data.users.find((u: User) => u.id === currentUser.id);
-        if (updatedMe) {
-          setCurrentUser(updatedMe);
+      const savedUserId = localStorage.getItem('zentex-user-id');
+      if (savedUserId && data.users && data.users.length > 0) {
+        const found = data.users.find((u: User) => u.id === savedUserId);
+        if (found) {
+          setCurrentUser(found);
+        } else {
+          setCurrentUser(null);
+          localStorage.removeItem('zentex-user-id');
         }
+      } else {
+        setCurrentUser(null);
       }
       setError(null);
     } catch (err: any) {
@@ -105,11 +149,65 @@ export default function App() {
     } finally {
       setLoading(false);
     }
-  }, [currentUser]);
+  }, []);
 
   useEffect(() => {
     loadData();
+    // Start active real-time operational polling every 5 seconds to update coordinates, orders, and chats dynamically
+    const pollInterval = setInterval(() => {
+      loadData();
+    }, 5000);
+    return () => clearInterval(pollInterval);
   }, [loadData]);
+
+  // Active real-time background GPS tracking & online heartbeat for logged-in field technicians
+  useEffect(() => {
+    if (!currentUser || currentUser.role !== 'employee') return;
+
+    const trackAndHeartbeat = () => {
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          async (position) => {
+            const { latitude, longitude } = position.coords;
+            try {
+              await fetch(`/api/users/${currentUser.id}/heartbeat`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ latitude, longitude })
+              });
+            } catch (e) {
+              console.error('Failed to post heartbeat with location', e);
+            }
+          },
+          async (error) => {
+            console.warn('Geolocation failed for heartbeat, sending general heartbeat', error);
+            try {
+              await fetch(`/api/users/${currentUser.id}/heartbeat`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({})
+              });
+            } catch (e) {
+              console.error('Failed to post fallback heartbeat', e);
+            }
+          },
+          { enableHighAccuracy: false, timeout: 5000 }
+        );
+      } else {
+        // No geolocation support
+        fetch(`/api/users/${currentUser.id}/heartbeat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({})
+        }).catch(e => console.error('Failed to post heartbeat', e));
+      }
+    };
+
+    // Run immediately and then every 15 seconds to ensure real-time visibility
+    trackAndHeartbeat();
+    const bgHeartbeatInterval = setInterval(trackAndHeartbeat, 15000);
+    return () => clearInterval(bgHeartbeatInterval);
+  }, [currentUser]);
 
   // Keyboard shortcuts listener for operational accessibility
   useEffect(() => {
@@ -193,6 +291,114 @@ export default function App() {
     }
   };
 
+  const handleDeleteUser = async (id: string) => {
+    try {
+      const response = await fetch(`/api/users/${id}`, {
+        method: 'DELETE'
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        alert(data.error || 'Erro ao excluir funcionário.');
+        return;
+      }
+      await loadData();
+    } catch {
+      alert('Erro ao excluir funcionário.');
+    }
+  };
+
+  const handleLogin = async (email: string, password: string): Promise<boolean> => {
+    try {
+      const response = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        alert(data.error || 'Erro ao realizar login.');
+        return false;
+      }
+      localStorage.setItem('zentex-user-id', data.user.id);
+      setCurrentUser(data.user);
+      if ((window as any).zentexSpeakForce) {
+        (window as any).zentexSpeakForce(`Sessão iniciada como ${data.user.name}`);
+      }
+      await loadData();
+      return true;
+    } catch {
+      alert('Incapaz de conectar ao servidor Zentex.');
+      return false;
+    }
+  };
+
+  const handleRegisterSelf = async (userData: any): Promise<boolean> => {
+    try {
+      const response = await fetch('/api/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(userData)
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        alert(data.error || 'Erro ao criar conta.');
+        return false;
+      }
+      localStorage.setItem('zentex-user-id', data.user.id);
+      setCurrentUser(data.user);
+      if ((window as any).zentexSpeakForce) {
+        (window as any).zentexSpeakForce(`Sessão iniciada como ${data.user.name}`);
+      }
+      await loadData();
+      return true;
+    } catch {
+      alert('Incapaz de conectar ao servidor Zentex.');
+      return false;
+    }
+  };
+
+  const handleChangePassword = async (newPassword: string): Promise<boolean> => {
+    if (!currentUser) return false;
+    try {
+      const response = await fetch('/api/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: currentUser.id, newPassword })
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        alert(data.error || 'Erro ao alterar senha.');
+        return false;
+      }
+      setCurrentUser(data.user);
+      await loadData();
+      return true;
+    } catch {
+      alert('Incapaz de conectar ao servidor Zentex.');
+      return false;
+    }
+  };
+
+  const handleLogout = async () => {
+    if (currentUser) {
+      try {
+        await fetch('/api/logout', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: currentUser.id })
+        });
+      } catch (e) {
+        console.error('Failed to post logout status', e);
+      }
+    }
+    localStorage.removeItem('zentex-user-id');
+    setCurrentUser(null);
+    if ((window as any).zentexSpeakForce) {
+      (window as any).zentexSpeakForce('Sessão encerrada.');
+    }
+    await loadData();
+  };
+
   const handleSendMessage = async (text: string, receiverId?: string) => {
     if (!currentUser) return;
     try {
@@ -229,7 +435,6 @@ export default function App() {
   };
 
   const handleResetDB = async () => {
-    if (!window.confirm('Tem certeza que deseja restaurar as tabelas para os dados padrão?')) return;
     try {
       setLoading(true);
       const response = await fetch('/api/reset', { method: 'POST' });
@@ -249,8 +454,8 @@ export default function App() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center text-slate-800">
-        <div className="flex flex-col items-center gap-4">
+      <div className="min-h-screen bg-zentex-ambient flex flex-col items-center justify-center text-slate-800">
+        <div className="flex flex-col items-center gap-4 bg-white/85 p-8 rounded-3xl shadow-3d-lg border border-slate-250/30 backdrop-blur-md">
           <Navigation className="w-12 h-12 text-emerald-600 animate-spin" />
           <h2 className="text-xl font-bold tracking-tight text-slate-800">Carregando Zentex...</h2>
           <p className="text-xs text-slate-500 font-mono">Sincronizando satélites e base operacional</p>
@@ -261,8 +466,8 @@ export default function App() {
 
   if (error || !db) {
     return (
-      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center text-slate-800 p-6">
-        <div className="bg-white border border-slate-200 rounded-3xl p-8 max-w-md text-center space-y-4 shadow-xl">
+      <div className="min-h-screen bg-zentex-ambient flex flex-col items-center justify-center text-slate-800 p-6">
+        <div className="bg-white border border-slate-200 border-b-4 border-b-rose-500/60 rounded-3xl p-8 max-w-md text-center space-y-4 shadow-3d-lg">
           <AlertCircle className="w-12 h-12 text-rose-500 mx-auto" />
           <h2 className="text-lg font-black text-slate-800">Falha na Conexão</h2>
           <p className="text-xs text-slate-600">Não foi possível conectar-se ao servidor central da Zentex. Verifique se o servidor está ativo.</p>
@@ -271,7 +476,7 @@ export default function App() {
               setLoading(true);
               loadData();
             }}
-            className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2.5 rounded-xl text-xs transition-colors"
+            className="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold py-2.5 rounded-xl text-xs shadow-3d-btn-emerald active:translate-y-0.5 active:shadow-inner transition-all cursor-pointer"
           >
             Tentar Novamente
           </button>
@@ -281,71 +486,71 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-800 font-sans selection:bg-emerald-100 selection:text-emerald-900">
+    <div className="min-h-screen bg-zentex-ambient text-slate-800 font-sans selection:bg-emerald-100 selection:text-emerald-900">
       
-      {/* PERSISTENT HEADER SWITCHER */}
-      <header className="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-slate-200/80 px-4 py-3.5 shadow-sm">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+      {/* PERSISTENT HEADER */}
+      <header className="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-slate-200/80 px-4 py-3 shadow-sm">
+        <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-3 items-center gap-4 relative">
           
-          {/* Logo Brand */}
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-500 flex items-center justify-center text-white shadow-md">
-              <Sparkles className="w-5 h-5 font-black" />
-            </div>
-            <div>
-              <div className="flex items-center gap-1.5">
-                <span className="text-base font-extrabold tracking-tight text-slate-900">ZENTEX</span>
-                <span className="text-[9px] bg-emerald-150 text-emerald-700 font-bold px-1.5 py-0.2 rounded border border-emerald-300 uppercase tracking-widest bg-emerald-50">Ativo</span>
-              </div>
-              <p className="text-[10px] text-slate-500 mt-0.5">Gestão Operacional de Campo • Estilo Attendio</p>
-            </div>
+          {/* Left space spacer on desktop, hidden on mobile */}
+          <div className="hidden md:block text-left text-[11px] font-bold text-slate-400 font-mono tracking-wider">
+            ZENTEX OPERATIONAL HUB
           </div>
 
-          {/* OPERATIONAL LOGIN & IDENTITY PANEL */}
-          <div className="flex items-center gap-2.5 bg-slate-100 border border-slate-200 p-2 rounded-2xl w-full sm:w-auto shadow-sm">
-            <div className="p-1.5 bg-emerald-100 text-emerald-700 rounded-lg hidden md:block">
-              <Users className="w-4 h-4" />
-            </div>
-            <div className="flex-1">
-              <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest block">Identificação de Acesso</label>
-              
-              <div className="flex items-center gap-1.5 mt-0.5">
-                <select
-                  value={currentUser?.id || ''}
-                  onChange={(e) => {
-                    const sel = db.users.find(u => u.id === e.target.value);
-                    if (sel) {
-                      setCurrentUser(sel);
-                      if ((window as any).zentexSpeakForce) {
-                        (window as any).zentexSpeakForce(`Sessão iniciada como ${sel.name}`);
-                      }
-                    }
-                  }}
-                  className="bg-transparent border-none text-xs font-bold text-slate-850 focus:outline-none cursor-pointer pr-4"
-                >
-                  {db.users.map(u => (
-                    <option key={u.id} value={u.id} className="bg-white text-slate-800 text-xs">
-                      {u.name} ({u.role === 'admin' ? 'Administrador' : 'Técnico'})
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
+          {/* Logo Brand - Perfectly Centered */}
+          <div className="flex justify-center">
+            <ZentexLogo className="h-13 sm:h-14 md:h-16" />
+          </div>
 
-            {/* Quick Badges indicating current active interface */}
-            <div className="text-right">
-              {currentUser?.role === 'admin' ? (
-                <span className="text-[10px] bg-red-50 text-red-700 font-black border border-red-200 rounded-lg px-2.5 py-1 uppercase tracking-wider flex items-center gap-1.5">
-                  <Shield className="w-3.5 h-3.5" />
-                  <span>Gerente</span>
-                </span>
-              ) : (
-                <span className="text-[10px] bg-emerald-50 text-emerald-700 font-black border border-emerald-200 rounded-lg px-2.5 py-1 uppercase tracking-wider flex items-center gap-1.5">
-                  <Hammer className="w-3.5 h-3.5" />
-                  <span>Técnico</span>
-                </span>
-              )}
-            </div>
+          {/* Right space - User Panel */}
+          <div className="flex justify-center md:justify-end">
+            {currentUser ? (
+              <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto justify-center md:justify-end">
+                {/* OPERATIONAL USER PANEL */}
+                <div className="flex items-center gap-2.5 bg-slate-50 border border-slate-200/80 p-2 rounded-2xl shadow-sm">
+                  <img src={getAvatarUrl(currentUser)} alt={currentUser.name} className="w-8 h-8 rounded-full object-cover border border-emerald-500/30" />
+                  <div className="min-w-[120px] text-left">
+                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest block leading-none">Acesso Operacional</p>
+                    <p className="text-xs font-bold text-slate-800 leading-tight mt-0.5">{currentUser.name}</p>
+                  </div>
+
+                  {/* Quick Badges indicating current active interface */}
+                  <div>
+                    {currentUser.role === 'admin' ? (
+                      <span className="text-[9px] bg-red-50 text-red-750 font-black border border-red-200 rounded-lg px-2 py-0.5 uppercase tracking-wider flex items-center gap-1">
+                        <Shield className="w-3 h-3 text-red-600" />
+                        <span>Gerente</span>
+                      </span>
+                    ) : currentUser.role === 'client' ? (
+                      <span className="text-[9px] bg-blue-50 text-blue-750 font-black border border-blue-200 rounded-lg px-2 py-0.5 uppercase tracking-wider flex items-center gap-1">
+                        <Users className="w-3 h-3 text-blue-600" />
+                        <span>Cliente</span>
+                      </span>
+                    ) : (
+                      <span className="text-[9px] bg-emerald-50 text-emerald-750 font-black border border-emerald-200 rounded-lg px-2 py-0.5 uppercase tracking-wider flex items-center gap-1">
+                        <Hammer className="w-3 h-3 text-emerald-600" />
+                        <span>Técnico</span>
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Logout Button */}
+                <button
+                  onClick={handleLogout}
+                  className="flex items-center gap-1.5 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-600 hover:text-slate-900 rounded-xl px-3 py-2.5 text-xs font-bold shadow-3d-sm active-press transition-all duration-150 cursor-pointer"
+                  title="Sair da Conta"
+                >
+                  <LogOut className="w-4 h-4 text-slate-500" />
+                  <span className="hidden sm:inline">Sair</span>
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2.5 bg-slate-50 border border-slate-100 p-2 rounded-2xl text-[10px] text-slate-500 font-bold uppercase tracking-wider shadow-3d-sm">
+                <span className="inline-block w-2 h-2 rounded-full bg-slate-400 animate-pulse" />
+                <span>Portal de Acesso Seguro</span>
+              </div>
+            )}
           </div>
 
         </div>
@@ -353,38 +558,59 @@ export default function App() {
 
       {/* MAIN CONTAINER */}
       <main className="max-w-7xl mx-auto px-4 py-6">
-        {currentUser ? (
-          currentUser.role === 'admin' ? (
-            <AdminDashboard
-              currentUser={currentUser}
-              users={db.users}
-              orders={db.orders}
-              timecards={db.timecards}
-              messages={db.chats}
-              onCreateOrder={handleCreateOrder}
-              onUpdateOrderStatus={handleUpdateOrderStatus}
-              onRegisterUser={handleRegisterUser}
-              onSendMessage={handleSendMessage}
-              onRefreshData={loadData}
-              onResetDB={handleResetDB}
-            />
-          ) : (
-            <EmployeeDashboard
-              currentUser={currentUser}
-              users={db.users}
-              orders={db.orders}
-              timecards={db.timecards}
-              messages={db.chats}
-              onUpdateOrderStatus={handleUpdateOrderStatus}
-              onClockAction={handleClockAction}
-              onSendMessage={handleSendMessage}
-              onRefreshData={loadData}
-            />
-          )
+        {!currentUser ? (
+          <ZentexAuth
+            onLogin={handleLogin}
+            onChangePassword={handleChangePassword}
+            currentUser={currentUser}
+            onLogout={handleLogout}
+            onRegisterSelf={handleRegisterSelf}
+          />
+        ) : currentUser.isTemporaryPassword ? (
+          <ZentexAuth
+            onLogin={handleLogin}
+            onChangePassword={handleChangePassword}
+            currentUser={currentUser}
+            onLogout={handleLogout}
+            onRegisterSelf={handleRegisterSelf}
+          />
+        ) : currentUser.role === 'admin' ? (
+          <AdminDashboard
+            currentUser={currentUser}
+            users={db.users}
+            orders={db.orders}
+            timecards={db.timecards}
+            messages={db.chats}
+            onCreateOrder={handleCreateOrder}
+            onUpdateOrderStatus={handleUpdateOrderStatus}
+            onRegisterUser={handleRegisterUser}
+            onDeleteUser={handleDeleteUser}
+            onSendMessage={handleSendMessage}
+            onRefreshData={loadData}
+            onResetDB={handleResetDB}
+          />
+        ) : currentUser.role === 'client' ? (
+          <ClientDashboard
+            currentUser={currentUser}
+            users={db.users}
+            orders={db.orders}
+            messages={db.chats}
+            onCreateOrder={handleCreateOrder}
+            onSendMessage={handleSendMessage}
+            onRefreshData={loadData}
+          />
         ) : (
-          <div className="text-center py-20 text-slate-500 text-xs">
-            Por favor, selecione um usuário no simulador de acesso acima.
-          </div>
+          <EmployeeDashboard
+            currentUser={currentUser}
+            users={db.users}
+            orders={db.orders}
+            timecards={db.timecards}
+            messages={db.chats}
+            onUpdateOrderStatus={handleUpdateOrderStatus}
+            onClockAction={handleClockAction}
+            onSendMessage={handleSendMessage}
+            onRefreshData={loadData}
+          />
         )}
       </main>
 

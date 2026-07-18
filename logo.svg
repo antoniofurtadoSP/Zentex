@@ -1,0 +1,29 @@
+<svg viewBox="0 0 400 400" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="blueRingGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8" />
+      <stop offset="50%" stop-color="#0284c7" />
+      <stop offset="100%" stop-color="#0369a1" />
+    </linearGradient>
+    <linearGradient id="dropletGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4ade80" />
+      <stop offset="100%" stop-color="#16a34a" />
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="2" dy="4" stdDeviation="4" flood-color="#0f172a" flood-opacity="0.15" />
+    </filter>
+  </defs>
+  <circle cx="200" cy="200" r="180" fill="#ffffff" stroke="url(#blueRingGrad)" stroke-width="12" filter="url(#shadow)" />
+  <g transform="translate(132, 50) scale(1.1)">
+    <path d="M 62 142 L 22 120 L 22 50 L 38 41" stroke="#0284c7" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" />
+    <path d="M 68 18 L 114 44 L 114 114 L 92 126" stroke="#22c55e" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" />
+    <path d="M 40 18 L 74 18" stroke="#22c55e" stroke-width="10" stroke-linecap="round" />
+    <path d="M 36 114 L 36 72 L 48 72 L 48 114" stroke="#0284c7" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" />
+    <path d="M 48 84 L 60 84 L 60 114" stroke="#0284c7" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" />
+    <path d="M 78 60 C 64 76, 60 86, 60 96 C 60 106, 68 114, 78 114 C 88 114, 96 106, 96 96 C 96 86, 92 76, 78 60 Z" fill="url(#dropletGrad)" stroke="#16a34a" stroke-width="2.5" stroke-linejoin="round" />
+    <path d="M 68 94 C 68 88, 72 82, 72 82" stroke="#ffffff" stroke-width="3" stroke-linecap="round" />
+    <path d="M 84 48 C 84 43, 84 43, 89 43 C 84 43, 84 43, 84 38 C 84 43, 84 43, 79 43 C 84 43, 84 43, 84 48 Z" fill="#0284c7" />
+  </g>
+  <text x="200" y="278" font-family="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-weight="900" font-size="48" fill="#0c2340" letter-spacing="0.05em" text-anchor="middle">ZENTEX</text>
+  <text x="200" y="318" font-family="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-weight="800" font-size="13" fill="#0284c7" letter-spacing="0.18em" text-anchor="middle">LIMPEZA E CONSERVAÇÃO</text>
+</svg>

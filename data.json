@@ -1,0 +1,205 @@
+{
+  "users": [
+    {
+      "id": "admin1",
+      "name": "Antonio Claudio",
+      "email": "antonio@zentex.com",
+      "role": "admin",
+      "phone": "(11) 98888-1111",
+      "avatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80",
+      "status": "working",
+      "password": "123456",
+      "isTemporaryPassword": false,
+      "gender": "male"
+    },
+    {
+      "id": "admin2",
+      "name": "Antonio Claudio (Gmail)",
+      "email": "antonioclaudiofp@gmail.com",
+      "role": "admin",
+      "phone": "(11) 98888-1111",
+      "avatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80",
+      "status": "working",
+      "password": "123456",
+      "isTemporaryPassword": false,
+      "gender": "male"
+    },
+    {
+      "id": "emp1",
+      "name": "Lucas Silva",
+      "email": "lucas@zentex.com",
+      "role": "employee",
+      "phone": "(11) 97777-2222",
+      "avatar": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80",
+      "status": "offline",
+      "lastLatitude": -23.5616,
+      "lastLongitude": -46.656,
+      "lastLocationUpdate": "2026-07-18T11:48:50.793Z",
+      "password": "123456",
+      "isTemporaryPassword": false,
+      "gender": "male"
+    },
+    {
+      "id": "emp2",
+      "name": "Mariana Costa",
+      "email": "mariana@zentex.com",
+      "role": "employee",
+      "phone": "(11) 96666-3333",
+      "avatar": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80",
+      "status": "offline",
+      "lastLatitude": -23.558,
+      "lastLongitude": -46.662,
+      "lastLocationUpdate": "2026-07-18T11:48:50.793Z",
+      "password": "123456",
+      "isTemporaryPassword": false,
+      "gender": "female"
+    },
+    {
+      "id": "emp3",
+      "name": "Roberto Santos",
+      "email": "roberto@zentex.com",
+      "role": "employee",
+      "phone": "(11) 95555-4444",
+      "avatar": "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80",
+      "status": "offline",
+      "lastLatitude": -23.553,
+      "lastLongitude": -46.65,
+      "lastLocationUpdate": "2026-07-18T11:48:50.793Z",
+      "password": "123456",
+      "isTemporaryPassword": false,
+      "gender": "male"
+    }
+  ],
+  "orders": [
+    {
+      "id": "OS-1001",
+      "title": "Manutenção de Ar Condicionado",
+      "description": "Aparelho de ar condicionado central não está resfriando e apresenta ruídos no setor de atendimento principal.",
+      "clientName": "Banco Itaú - Agência Paulista",
+      "clientAddress": "Av. Paulista, 1000 - Bela Vista, São Paulo - SP",
+      "clientPhone": "(11) 3251-1234",
+      "priority": "alta",
+      "status": "em_andamento",
+      "assignedEmployeeId": "emp1",
+      "assignedEmployeeName": "Lucas Silva",
+      "createdBy": "admin1",
+      "createdAt": "2026-07-17T11:48:50.794Z",
+      "startedAt": "2026-07-18T09:48:50.794Z",
+      "startLatitude": -23.562,
+      "startLongitude": -46.655
+    },
+    {
+      "id": "OS-1002",
+      "title": "Instalação de Roteador Wi-Fi 6",
+      "description": "Instalar e configurar o novo roteador corporativo de alta performance fornecido no almoxarifado.",
+      "clientName": "Clínica Médica Bem Estar",
+      "clientAddress": "Rua Augusta, 1500 - Consolação, São Paulo - SP",
+      "clientPhone": "(11) 3881-5555",
+      "priority": "media",
+      "status": "aberta",
+      "createdBy": "admin1",
+      "createdAt": "2026-07-18T11:48:50.794Z"
+    },
+    {
+      "id": "OS-1003",
+      "title": "Reparo de Cabeamento de Rede Cat6",
+      "description": "Substituição de tomadas RJ45 fêmea no laboratório de informática. Alguns pontos estão sem sinal ou lentos.",
+      "clientName": "Escola Maple Bear Jardins",
+      "clientAddress": "Alameda Lorena, 800 - Jardins, São Paulo - SP",
+      "clientPhone": "(11) 3062-8888",
+      "priority": "alta",
+      "status": "pausada",
+      "assignedEmployeeId": "emp2",
+      "assignedEmployeeName": "Mariana Costa",
+      "createdBy": "admin1",
+      "createdAt": "2026-07-17T23:48:50.794Z",
+      "startedAt": "2026-07-18T01:48:50.794Z",
+      "pausedAt": "2026-07-18T03:48:50.794Z",
+      "pauseReason": "Falta de conector fêmea Cat6 de reposição"
+    },
+    {
+      "id": "OS-1004",
+      "title": "Substituição de Câmera Dome Externa",
+      "description": "Troca da câmera danificada por curto na entrada da garagem. Testar o sinal com o gravador DVR.",
+      "clientName": "Condomínio Edifício Copan",
+      "clientAddress": "Av. Ipiranga, 200 - Centro Histórico de São Paulo, São Paulo - SP",
+      "clientPhone": "(11) 3259-2200",
+      "priority": "baixa",
+      "status": "concluida",
+      "assignedEmployeeId": "emp3",
+      "assignedEmployeeName": "Roberto Santos",
+      "createdBy": "admin1",
+      "createdAt": "2026-07-16T23:48:50.794Z",
+      "startedAt": "2026-07-17T01:48:50.794Z",
+      "completedAt": "2026-07-17T03:48:50.794Z",
+      "completionNotes": "Câmera instalada com sucesso, sinal verificado no monitor de vigilância.",
+      "completionSignature": "Roberto Santos & Síndico",
+      "startLatitude": -23.543,
+      "startLongitude": -46.644,
+      "endLatitude": -23.5431,
+      "endLongitude": -46.6439
+    }
+  ],
+  "chats": [
+    {
+      "id": "chat1",
+      "senderId": "emp1",
+      "senderName": "Lucas Silva",
+      "senderRole": "employee",
+      "text": "Olá! Acabei de chegar no Banco Itaú na Paulista para iniciar a manutenção do ar condicionado.",
+      "timestamp": "2026-07-18T09:48:50.794Z"
+    },
+    {
+      "id": "chat2",
+      "senderId": "admin1",
+      "senderName": "Antonio Claudio",
+      "senderRole": "admin",
+      "text": "Perfeito, Lucas. Verifique também a tubulação traseira para ver se há algum vazamento de gás.",
+      "timestamp": "2026-07-18T09:54:50.794Z"
+    },
+    {
+      "id": "chat3",
+      "senderId": "emp1",
+      "senderName": "Lucas Silva",
+      "senderRole": "employee",
+      "text": "Ok, vou olhar e aviso se precisar de reposição.",
+      "timestamp": "2026-07-18T10:00:50.794Z"
+    },
+    {
+      "id": "chat4",
+      "senderId": "emp2",
+      "senderName": "Mariana Costa",
+      "senderRole": "employee",
+      "text": "Preciso de conectores Cat6 adicionais para concluir o laboratório da Maple Bear. Tem no estoque?",
+      "timestamp": "2026-07-18T03:48:50.794Z"
+    },
+    {
+      "id": "chat5",
+      "senderId": "admin1",
+      "senderName": "Antonio Claudio",
+      "senderRole": "admin",
+      "text": "Sim, temos sim, Mariana. Estão no armário B do almoxarifado. Pode vir retirar.",
+      "timestamp": "2026-07-18T04:00:50.794Z"
+    }
+  ],
+  "timecards": [
+    {
+      "id": "tc1",
+      "employeeId": "emp1",
+      "employeeName": "Lucas Silva",
+      "date": "2026-07-18",
+      "clockIn": "08:05:22",
+      "latitudeIn": -23.56,
+      "longitudeIn": -46.65
+    },
+    {
+      "id": "tc2",
+      "employeeId": "emp2",
+      "employeeName": "Mariana Costa",
+      "date": "2026-07-18",
+      "clockIn": "08:15:45",
+      "latitudeIn": -23.555,
+      "longitudeIn": -46.66
+    }
+  ]
+}

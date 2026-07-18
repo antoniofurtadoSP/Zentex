@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { User, ServiceOrder, TimeCard, ChatMessage } from '../types';
 import ZentexChat from './ZentexChat';
+import ZentexMap from './ZentexMap';
 import { 
   Clock, MapPin, ClipboardList, Play, Pause, CheckSquare, MessageSquare, 
-  UserCheck, AlertTriangle, FileSignature, RefreshCw, Send, CheckCircle, Volume2
+  UserCheck, AlertTriangle, FileSignature, RefreshCw, Send, CheckCircle, Volume2,
+  Navigation
 } from 'lucide-react';
 
 interface EmployeeDashboardProps {
@@ -29,7 +31,7 @@ export default function EmployeeDashboard({
   onSendMessage,
   onRefreshData
 }: EmployeeDashboardProps) {
-  const [activeTab, setActiveTab] = useState<'orders' | 'clock' | 'chat'>('orders');
+  const [activeTab, setActiveTab] = useState<'orders' | 'clock' | 'chat' | 'map'>('orders');
   const [selectedOS, setSelectedOS] = useState<ServiceOrder | null>(null);
 
   // Geolocation states
@@ -47,10 +49,15 @@ export default function EmployeeDashboard({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
 
-  // Automatically request/track GPS on load
-  const requestGPS = () => {
+  // Automatically request/track GPS on load with optional callback for exact execution sequence
+  const requestGPS = (callback?: (lat: number, lng: number) => void) => {
     if (!navigator.geolocation) {
       setGpsError('Geolocalização não suportada no seu navegador.');
+      if (callback) {
+        const lat = -23.5616 + (Math.random() - 0.5) * 0.01;
+        const lng = -46.6560 + (Math.random() - 0.5) * 0.01;
+        callback(lat, lng);
+      }
       return;
     }
 
@@ -59,21 +66,21 @@ export default function EmployeeDashboard({
 
     navigator.geolocation.getCurrentPosition(
       (position) => {
-        setCoords({
-          lat: position.coords.latitude,
-          lng: position.coords.longitude
-        });
+        const lat = position.coords.latitude;
+        const lng = position.coords.longitude;
+        setCoords({ lat, lng });
         setGpsLoading(false);
+        if (callback) callback(lat, lng);
       },
       (error) => {
         console.warn('Geolocation failed, fallback to Paulista area.', error);
         // Fallback mock coordinates around Paulista/Centro to avoid breaking inside sandboxed iframes
-        setCoords({
-          lat: -23.5616 + (Math.random() - 0.5) * 0.01,
-          lng: -46.6560 + (Math.random() - 0.5) * 0.01
-        });
+        const lat = -23.5616 + (Math.random() - 0.5) * 0.01;
+        const lng = -46.6560 + (Math.random() - 0.5) * 0.01;
+        setCoords({ lat, lng });
         setGpsLoading(false);
         setGpsError('Sinal de GPS fraco. Usando triângulação aproximada.');
+        if (callback) callback(lat, lng);
       },
       { enableHighAccuracy: true, timeout: 5000 }
     );
@@ -137,24 +144,27 @@ export default function EmployeeDashboard({
 
   // Actions
   const handleClockIn = () => {
-    requestGPS();
-    onClockAction('in', coords.lat, coords.lng);
+    requestGPS((lat, lng) => {
+      onClockAction('in', lat, lng);
+    });
   };
 
   const handleClockOut = () => {
-    requestGPS();
-    onClockAction('out', coords.lat, coords.lng);
+    requestGPS((lat, lng) => {
+      onClockAction('out', lat, lng);
+    });
   };
 
   const handleStartActivity = (orderId: string) => {
-    requestGPS();
-    // Start activity automatically records GPS location as required:
-    // "os funcionários deverão compartilhar a sua localização ao iniciar uma atividade no aplicativo"
-    onUpdateOrderStatus(orderId, 'em_andamento', {
-      latitude: coords.lat,
-      longitude: coords.lng
+    requestGPS((lat, lng) => {
+      // Start activity automatically records GPS location as required:
+      // "os funcionários deverão compartilhar a sua localização ao iniciar uma atividade no aplicativo"
+      onUpdateOrderStatus(orderId, 'em_andamento', {
+        latitude: lat,
+        longitude: lng
+      });
+      alert('Atividade iniciada com sucesso! Sua geolocalização de início foi registrada.');
     });
-    alert('Atividade iniciada com sucesso! Sua geolocalização de início foi registrada.');
   };
 
   const handlePauseActivitySubmit = (e: React.FormEvent) => {
@@ -197,13 +207,13 @@ export default function EmployeeDashboard({
     <div className="space-y-6">
       
       {/* GPS Status Indicator bar */}
-      <div className="bg-white border border-slate-200 p-3.5 rounded-2xl flex flex-wrap items-center justify-between gap-3.5 shadow-sm">
+      <div className="bg-gradient-to-r from-white via-white to-emerald-50/10 border border-slate-200 border-b-4 border-b-emerald-600/60 p-3.5 rounded-2xl flex flex-wrap items-center justify-between gap-3.5 shadow-3d-md hover:border-emerald-300 transition-colors duration-200 cursor-default">
         <div className="flex items-center gap-3">
-          <div className={`p-2 rounded-lg ${gpsError ? 'bg-amber-50 text-amber-700 border border-amber-100' : 'bg-emerald-50 text-emerald-700 border border-emerald-100'}`}>
+          <div className={`p-2 rounded-lg shadow-3d-sm ${gpsError ? 'bg-amber-50 text-amber-700 border border-amber-100' : 'bg-emerald-50 text-emerald-700 border border-emerald-100'}`}>
             <MapPin className={`w-4 h-4 ${gpsLoading ? 'animate-bounce' : ''}`} />
           </div>
           <div>
-            <p className="text-xs font-bold text-slate-900">Coordenadas de Satélite</p>
+            <p className="text-xs font-black text-slate-900">Coordenadas de Satélite</p>
             <p className="text-[10px] text-slate-500 font-mono mt-0.5">
               {coords.lat ? `Latitude: ${coords.lat.toFixed(5)} / Longitude: ${coords.lng?.toFixed(5)}` : 'Obtendo sinal GPS...'}
             </p>
@@ -212,11 +222,11 @@ export default function EmployeeDashboard({
 
         <div className="flex items-center gap-2">
           {gpsError && (
-            <span className="text-[10px] text-amber-600 font-medium">{gpsError}</span>
+            <span className="text-[10px] text-amber-600 font-medium animate-pulse">{gpsError}</span>
           )}
           <button
             onClick={requestGPS}
-            className="px-3 py-1 bg-slate-50 border border-slate-200 text-[10px] text-slate-600 font-bold hover:bg-slate-100 rounded-lg transition-colors flex items-center gap-1 shadow-sm"
+            className="px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-[10px] text-slate-600 font-bold rounded-lg shadow-3d-sm active-press transition-all flex items-center gap-1 cursor-pointer"
           >
             <RefreshCw className="w-3.5 h-3.5" />
             <span>Atualizar Sinal</span>
@@ -225,13 +235,13 @@ export default function EmployeeDashboard({
       </div>
 
       {/* Tabs Menu */}
-      <div className="flex border-b border-slate-200 pb-2 gap-1 overflow-x-auto">
+      <div className="flex border-b border-slate-200 pb-2 gap-1.5 overflow-x-auto scrollbar-none">
         <button
           onClick={() => setActiveTab('orders')}
-          className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl transition-all ${
+          className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${
             activeTab === 'orders'
-              ? 'bg-emerald-600 text-white shadow-md'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
+              ? 'bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-600 text-white shadow-3d-btn-emerald active:translate-y-0.5'
+              : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200 hover:bg-slate-50 shadow-3d-sm active-press'
           }`}
         >
           <ClipboardList className="w-4 h-4" />
@@ -240,10 +250,10 @@ export default function EmployeeDashboard({
 
         <button
           onClick={() => setActiveTab('clock')}
-          className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl transition-all ${
+          className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${
             activeTab === 'clock'
-              ? 'bg-emerald-600 text-white shadow-md'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
+              ? 'bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-600 text-white shadow-3d-btn-emerald active:translate-y-0.5'
+              : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200 hover:bg-slate-50 shadow-3d-sm active-press'
           }`}
         >
           <Clock className="w-4 h-4" />
@@ -252,14 +262,26 @@ export default function EmployeeDashboard({
 
         <button
           onClick={() => setActiveTab('chat')}
-          className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl transition-all ${
+          className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${
             activeTab === 'chat'
-              ? 'bg-emerald-600 text-white shadow-md'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
+              ? 'bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-600 text-white shadow-3d-btn-emerald active:translate-y-0.5'
+              : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200 hover:bg-slate-50 shadow-3d-sm active-press'
           }`}
         >
           <MessageSquare className="w-4 h-4" />
           <span>Suporte (Chat)</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('map')}
+          className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${
+            activeTab === 'map'
+              ? 'bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-600 text-white shadow-3d-btn-emerald active:translate-y-0.5'
+              : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200 hover:bg-slate-50 shadow-3d-sm active-press'
+          }`}
+        >
+          <MapPin className="w-4 h-4" />
+          <span>Mapa de Rotas</span>
         </button>
       </div>
 
@@ -271,8 +293,8 @@ export default function EmployeeDashboard({
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             
             {/* List of Tasks */}
-            <div className="lg:col-span-2 bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
-              <h3 className="text-sm font-bold text-slate-900 mb-4 font-sans">Minhas Ordens de Serviço Designadas</h3>
+            <div className="lg:col-span-2 bg-white border border-slate-200 rounded-2xl p-5 shadow-3d-md border-b-2 border-b-slate-300/40">
+              <h3 className="text-sm font-black text-slate-900 mb-4 font-sans">Minhas Ordens de Serviço Designadas</h3>
               
               {myOrders.length === 0 ? (
                 <div className="text-center py-16 text-slate-400">
@@ -376,8 +398,31 @@ export default function EmployeeDashboard({
                         <MapPin className="w-3.5 h-3.5 text-slate-400" />
                         <span>{selectedOS.clientAddress}</span>
                       </p>
+
+                      {/* GPS / Navigation Shortcuts */}
+                      <div className="mt-2.5 flex flex-wrap gap-2">
+                        <a
+                          href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(selectedOS.clientAddress)}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-extrabold px-3 py-2 rounded-xl border border-emerald-150 cursor-pointer shadow-sm text-xs transition-colors"
+                        >
+                          <Navigation className="w-4 h-4 fill-current rotate-45" />
+                          <span>Rotas no GPS (Google Maps)</span>
+                        </a>
+                        <a
+                          href={`https://waze.com/ul?q=${encodeURIComponent(selectedOS.clientAddress)}&navigate=yes`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 bg-sky-50 hover:bg-sky-100 text-sky-700 font-extrabold px-3 py-2 rounded-xl border border-sky-150 cursor-pointer shadow-sm text-xs transition-colors"
+                        >
+                          <MapPin className="w-4 h-4 text-sky-600" />
+                          <span>Abrir no Waze</span>
+                        </a>
+                      </div>
+
                       {selectedOS.clientPhone && (
-                        <p className="text-slate-500 mt-0.5 flex items-center gap-1">
+                        <p className="text-slate-500 mt-2.5 flex items-center gap-1">
                           <Clock className="w-3.5 h-3.5 text-slate-400" />
                           <span>{selectedOS.clientPhone}</span>
                         </p>
@@ -688,6 +733,24 @@ export default function EmployeeDashboard({
               messages={messages}
               onSendMessage={onSendMessage}
               onRefresh={onRefreshData}
+            />
+          </div>
+        )}
+
+        {/* TAB 4: MAPS */}
+        {activeTab === 'map' && (
+          <div className="space-y-4">
+            <div className="bg-white border border-slate-200 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-sm">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">Meu Radar de Rotas</h3>
+                <p className="text-xs text-slate-500 font-sans">Acompanhe suas ordens de serviço e seu sinal de satélite atualizado</p>
+              </div>
+            </div>
+
+            <ZentexMap 
+              users={users} 
+              orders={orders.filter(o => o.assignedEmployeeId === currentUser.id)} 
+              selectedUser={currentUser} 
             />
           </div>
         )}

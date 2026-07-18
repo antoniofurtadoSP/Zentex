@@ -1,11 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { User, ServiceOrder, TimeCard, ChatMessage, OSPriority } from '../types';
+import { getAvatarUrl } from '../utils';
 import ZentexMap from './ZentexMap';
 import ZentexChat from './ZentexChat';
 import { 
   Plus, Users, ClipboardList, Map, MessageSquare, Clock, ShieldCheck, 
   TrendingUp, CheckCircle, AlertTriangle, Play, HelpCircle, Phone, 
-  MapPin, Eye, Calendar, UserPlus, RefreshCcw, Download
+  MapPin, Eye, Calendar, UserPlus, RefreshCcw, Download, Upload, Image, X, Trash2
 } from 'lucide-react';
 
 interface AdminDashboardProps {
@@ -17,6 +18,7 @@ interface AdminDashboardProps {
   onCreateOrder: (order: Partial<ServiceOrder>) => void;
   onUpdateOrderStatus: (id: string, status: any, data?: any) => void;
   onRegisterUser: (user: Partial<User>) => void;
+  onDeleteUser?: (id: string) => void;
   onSendMessage: (text: string, receiverId?: string) => void;
   onRefreshData: () => void;
   onResetDB: () => void;
@@ -31,11 +33,27 @@ export default function AdminDashboard({
   onCreateOrder,
   onUpdateOrderStatus,
   onRegisterUser,
+  onDeleteUser,
   onSendMessage,
   onRefreshData,
   onResetDB
 }: AdminDashboardProps) {
   const [activeTab, setActiveTab] = useState<'overview' | 'orders' | 'employees' | 'map' | 'chat' | 'timecards'>('overview');
+  const [roleFilter, setRoleFilter] = useState<'all' | 'admin' | 'employee'>('all');
+  const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
+  const [confirmReset, setConfirmReset] = useState(false);
+
+  const [lastViewedChatTime, setLastViewedChatTime] = useState<string>(() => {
+    return localStorage.getItem('lastViewedChatTime') || new Date().toISOString();
+  });
+
+  useEffect(() => {
+    if (activeTab === 'chat') {
+      const now = new Date().toISOString();
+      setLastViewedChatTime(now);
+      localStorage.setItem('lastViewedChatTime', now);
+    }
+  }, [activeTab, messages]);
   
   // Modals / Form States
   const [showOSModal, setShowOSModal] = useState(false);
@@ -56,6 +74,57 @@ export default function AdminDashboard({
   const [empEmail, setEmpEmail] = useState('');
   const [empPhone, setEmpPhone] = useState('');
   const [empAvatar, setEmpAvatar] = useState('');
+  const [empPassword, setEmpPassword] = useState('123456');
+  const [empAddress, setEmpAddress] = useState('');
+  const [empDocumentId, setEmpDocumentId] = useState('');
+  const [empBirthDate, setEmpBirthDate] = useState('');
+  const [empAdmissionDate, setEmpAdmissionDate] = useState('');
+  const [empNotes, setEmpNotes] = useState('');
+  const [empRole, setEmpRole] = useState<'admin' | 'employee'>('employee');
+  const [empGender, setEmpGender] = useState<'male' | 'female' | 'neutral'>('neutral');
+  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [viewingUser, setViewingUser] = useState<User | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = () => {
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      const file = e.dataTransfer.files[0];
+      processFile(file);
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      processFile(file);
+    }
+  };
+
+  const processFile = (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      alert('Por favor, envie apenas arquivos de imagem.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      if (event.target?.result) {
+        setEmpAvatar(event.target.result as string);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
 
   // Map tracking helper
   const [mapSelectedUser, setMapSelectedUser] = useState<User | null>(null);
@@ -97,18 +166,71 @@ export default function AdminDashboard({
     }
 
     onRegisterUser({
+      id: editingUser ? editingUser.id : undefined,
       name: empName,
       email: empEmail,
       phone: empPhone,
       avatar: empAvatar || undefined,
-      role: 'employee'
+      role: empRole,
+      gender: empGender,
+      password: empPassword,
+      isTemporaryPassword: editingUser ? editingUser.isTemporaryPassword : true,
+      address: empAddress,
+      documentId: empDocumentId,
+      birthDate: empBirthDate,
+      admissionDate: empAdmissionDate,
+      notes: empNotes
     });
 
+    // Reset Form and close modal
     setEmpName('');
     setEmpEmail('');
     setEmpPhone('');
     setEmpAvatar('');
+    setEmpPassword('123456');
+    setEmpAddress('');
+    setEmpDocumentId('');
+    setEmpBirthDate('');
+    setEmpAdmissionDate('');
+    setEmpNotes('');
+    setEmpRole('employee');
+    setEmpGender('neutral');
+    setEditingUser(null);
     setShowEmployeeModal(false);
+  };
+
+  const handleOpenEditUser = (user: User) => {
+    setEditingUser(user);
+    setEmpName(user.name || '');
+    setEmpEmail(user.email || '');
+    setEmpPhone(user.phone || '');
+    setEmpAvatar(user.avatar || '');
+    setEmpGender(user.gender || 'neutral');
+    setEmpPassword(user.password || '123456');
+    setEmpAddress(user.address || '');
+    setEmpDocumentId(user.documentId || '');
+    setEmpBirthDate(user.birthDate || '');
+    setEmpAdmissionDate(user.admissionDate || '');
+    setEmpNotes(user.notes || '');
+    setEmpRole(user.role || 'employee');
+    setShowEmployeeModal(true);
+  };
+
+  const handleOpenCreateUser = () => {
+    setEditingUser(null);
+    setEmpName('');
+    setEmpEmail('');
+    setEmpPhone('');
+    setEmpAvatar('');
+    setEmpGender('neutral');
+    setEmpPassword('123456');
+    setEmpAddress('');
+    setEmpDocumentId('');
+    setEmpBirthDate('');
+    setEmpAdmissionDate('');
+    setEmpNotes('');
+    setEmpRole('employee');
+    setShowEmployeeModal(true);
   };
 
   // Summary Math
@@ -122,63 +244,118 @@ export default function AdminDashboard({
   const idleEmployees = users.filter(u => u.role === 'employee' && u.status === 'idle').length;
   const offlineEmployees = users.filter(u => u.role === 'employee' && u.status === 'offline').length;
 
+  const unreadClientMessages = messages.filter(m => 
+    m.senderRole === 'client' && 
+    m.timestamp > lastViewedChatTime
+  );
+  const unreadClientCount = unreadClientMessages.length;
+
+  // Real-time corporate billing calculations
+  const totalBilling = orders
+    .filter(o => o.paymentStatus === 'pago')
+    .reduce((sum, o) => sum + (o.price || 0), 0);
+
   return (
     <div className="space-y-6">
       
+      {unreadClientCount > 0 && activeTab !== 'chat' && (
+        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-150 border-l-4 border-l-blue-600 p-4 rounded-xl shadow-3d-sm flex items-center justify-between animate-bounce [animation-duration:3s]">
+          <div className="flex items-center gap-3">
+            <div className="relative shrink-0">
+              <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-rose-500"></span>
+              </span>
+              <div className="p-2.5 bg-blue-100 text-blue-800 rounded-xl">
+                <MessageSquare className="w-5 h-5" />
+              </div>
+            </div>
+            <div>
+              <p className="text-xs font-black text-slate-800">Nova mensagem de cliente recebida!</p>
+              <p className="text-[10px] text-slate-500 mt-0.5">
+                Você tem <strong className="text-blue-700 font-extrabold">{unreadClientCount}</strong> {unreadClientCount === 1 ? 'nova mensagem' : 'novas mensagens'} de {unreadClientCount === 1 ? 'cliente' : 'clientes'} aguardando atendimento.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setActiveTab('chat')}
+            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-bold text-[10px] rounded-lg shadow-3d-btn-blue hover:scale-105 active:scale-95 transition-all duration-150 cursor-pointer"
+          >
+            Atender Agora
+          </button>
+        </div>
+      )}
+      
       {/* Metrics Banner */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
         {/* Metric 1 */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-4 flex items-center gap-4 shadow-sm">
-          <div className="p-3 bg-indigo-50 text-indigo-700 rounded-xl">
+        <div className="bg-gradient-to-b from-white to-slate-50 border border-slate-200 border-b-4 border-b-indigo-500/60 rounded-2xl p-4 flex items-center gap-4 shadow-3d-md hover:scale-102 transition-all duration-200 cursor-default">
+          <div className="p-3 bg-indigo-50 text-indigo-700 rounded-xl shadow-3d-sm border border-indigo-100/30">
             <ClipboardList className="w-5 h-5" />
           </div>
           <div>
             <p className="text-[10px] text-slate-500 uppercase font-semibold">Ordens Ativas</p>
             <div className="flex items-baseline gap-1.5 mt-0.5">
-              <span className="text-xl font-bold text-slate-900">{activeOrders}</span>
+              <span className="text-xl font-black text-slate-900">{activeOrders}</span>
               <span className="text-[10px] text-emerald-600 font-mono font-bold">+{pendingOrders} abertas</span>
             </div>
           </div>
         </div>
-
+ 
         {/* Metric 2 */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-4 flex items-center gap-4 shadow-sm">
-          <div className="p-3 bg-emerald-50 text-emerald-700 rounded-xl">
+        <div className="bg-gradient-to-b from-white to-slate-50 border border-slate-200 border-b-4 border-b-emerald-600/60 rounded-2xl p-4 flex items-center gap-4 shadow-3d-md hover:scale-102 transition-all duration-200 cursor-default">
+          <div className="p-3 bg-emerald-50 text-emerald-700 rounded-xl shadow-3d-sm border border-emerald-100/30">
             <Users className="w-5 h-5" />
           </div>
           <div>
             <p className="text-[10px] text-slate-500 uppercase font-semibold">Técnicos em Campo</p>
             <div className="flex items-baseline gap-1.5 mt-0.5">
-              <span className="text-xl font-bold text-slate-900">{workingEmployees + idleEmployees}</span>
+              <span className="text-xl font-black text-slate-900">{workingEmployees + idleEmployees}</span>
               <span className="text-[10px] text-emerald-600 font-mono font-bold">/{totalEmployees} cadastrados</span>
             </div>
           </div>
         </div>
-
+ 
         {/* Metric 3 */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-4 flex items-center gap-4 shadow-sm">
-          <div className="p-3 bg-emerald-50 text-emerald-700 rounded-xl">
+        <div className="bg-gradient-to-b from-white to-slate-50 border border-slate-200 border-b-4 border-b-teal-500/60 rounded-2xl p-4 flex items-center gap-4 shadow-3d-md hover:scale-102 transition-all duration-200 cursor-default">
+          <div className="p-3 bg-teal-50 text-teal-700 rounded-xl shadow-3d-sm border border-teal-100/30">
             <CheckCircle className="w-5 h-5" />
           </div>
           <div>
             <p className="text-[10px] text-slate-500 uppercase font-semibold">OS Concluídas</p>
             <div className="flex items-baseline gap-1.5 mt-0.5">
-              <span className="text-xl font-bold text-slate-900">{completedOrders}</span>
+              <span className="text-xl font-black text-slate-900">{completedOrders}</span>
               <span className="text-[10px] text-slate-500 font-mono font-semibold">Este mês</span>
             </div>
           </div>
         </div>
-
+ 
         {/* Metric 4 */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-4 flex items-center gap-4 shadow-sm">
-          <div className="p-3 bg-amber-50 text-amber-700 rounded-xl">
+        <div className="bg-gradient-to-b from-white to-slate-50 border border-slate-200 border-b-4 border-b-amber-500/60 rounded-2xl p-4 flex items-center gap-4 shadow-3d-md hover:scale-102 transition-all duration-200 cursor-default">
+          <div className="p-3 bg-amber-50 text-amber-700 rounded-xl shadow-3d-sm border border-amber-100/30">
             <Clock className="w-5 h-5" />
           </div>
           <div>
             <p className="text-[10px] text-slate-500 uppercase font-semibold">Pontos Batidos</p>
             <div className="flex items-baseline gap-1.5 mt-0.5">
-              <span className="text-xl font-bold text-slate-900">{timecards.length}</span>
+              <span className="text-xl font-black text-slate-900">{timecards.length}</span>
               <span className="text-[10px] text-amber-600 font-mono font-bold">Hoje</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Metric 5 - Financial Billing */}
+        <div className="bg-gradient-to-b from-white to-slate-50 border border-slate-200 border-b-4 border-b-emerald-500 rounded-2xl p-4 flex items-center gap-4 shadow-3d-md hover:scale-102 transition-all duration-200 cursor-default">
+          <div className="p-3 bg-emerald-50 text-emerald-800 rounded-xl shadow-3d-sm border border-emerald-100/30">
+            <TrendingUp className="w-5 h-5" />
+          </div>
+          <div>
+            <p className="text-[10px] text-slate-500 uppercase font-semibold">Faturamento Líquido</p>
+            <div className="flex items-baseline gap-1.5 mt-0.5">
+              <span className="text-lg font-black text-slate-900 font-mono">
+                R$ {totalBilling.toFixed(2).replace('.', ',')}
+              </span>
+              <span className="text-[8px] bg-emerald-100 text-emerald-800 font-extrabold px-1.5 py-0.5 rounded-full font-mono">PAID</span>
             </div>
           </div>
         </div>
@@ -186,26 +363,39 @@ export default function AdminDashboard({
 
       {/* Navigation Sub-Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-3">
-        <div className="flex gap-1 overflow-x-auto pb-1 scrollbar-none">
+        <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none">
           {([
             { id: 'overview', label: 'Visão Geral', icon: ShieldCheck },
             { id: 'orders', label: 'Ordens de Serviço (OS)', icon: ClipboardList },
             { id: 'employees', label: 'Funcionários (Equipe)', icon: Users },
             { id: 'map', label: 'Mapa de Equipes', icon: Map },
-            { id: 'chat', label: 'Chat Interno', icon: MessageSquare },
+            { id: 'chat', label: 'Atendimento & Chat', icon: MessageSquare },
             { id: 'timecards', label: 'Registros de Ponto', icon: Clock }
           ] as const).map(tab => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-2 px-3 py-1.5 text-xs font-semibold rounded-lg transition-all whitespace-nowrap ${
+              className={`flex items-center gap-2 px-3 py-1.5 text-xs font-bold rounded-xl transition-all whitespace-nowrap cursor-pointer relative ${
                 activeTab === tab.id
-                  ? 'bg-emerald-600 text-white shadow-md'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
+                  ? 'bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-600 text-white shadow-3d-btn-emerald active:translate-y-0.5'
+                  : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200 hover:bg-slate-50 shadow-3d-sm active-press'
               }`}
             >
-              <tab.icon className="w-4 h-4" />
+              <div className="relative">
+                <tab.icon className="w-4 h-4" />
+                {tab.id === 'chat' && unreadClientCount > 0 && (
+                  <span className="absolute -top-1 -right-1 flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
+                  </span>
+                )}
+              </div>
               <span>{tab.label}</span>
+              {tab.id === 'chat' && unreadClientCount > 0 && (
+                <span className="bg-rose-500 text-white font-extrabold text-[9px] px-1.5 py-0.5 rounded-full leading-none shadow-sm animate-pulse ml-0.5">
+                  {unreadClientCount}
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -213,18 +403,41 @@ export default function AdminDashboard({
         <div className="flex items-center gap-2">
           <button
             onClick={onRefreshData}
-            className="p-1.5 border border-slate-200 bg-white hover:bg-slate-100 text-slate-600 rounded-xl transition-all"
+            className="p-1.5 border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 rounded-xl shadow-3d-sm hover:shadow-3d-md hover:border-slate-350 active-press transition-all cursor-pointer"
             title="Sincronizar Dados"
           >
             <RefreshCcw className="w-4 h-4" />
           </button>
-          <button
-            onClick={onResetDB}
-            className="px-3 py-1.5 bg-white hover:bg-rose-50 text-rose-600 hover:text-rose-700 border border-slate-200 rounded-xl text-xs font-semibold transition-all shadow-sm"
-            title="Restaurar Banco de Dados ao estado padrão de testes"
-          >
-            Restaurar Seeds
-          </button>
+          {confirmReset ? (
+            <div className="flex items-center gap-1 bg-rose-50 border border-rose-200 p-1 rounded-xl animate-pulse shadow-sm">
+              <span className="text-[10px] font-black text-rose-700 uppercase tracking-tight px-1.5">Resetar tudo?</span>
+              <button
+                onClick={() => {
+                  onResetDB();
+                  setConfirmReset(false);
+                }}
+                className="bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 text-white text-[10px] font-extrabold px-2.5 py-1 rounded-lg transition-all active:translate-y-0.5 shadow-3d-btn-rose cursor-pointer whitespace-nowrap"
+                title="Confirmar restauração de dados para o padrão de testes"
+              >
+                Confirmar
+              </button>
+              <button
+                onClick={() => setConfirmReset(false)}
+                className="bg-slate-200 hover:bg-slate-300 text-slate-700 text-[10px] font-extrabold px-2.5 py-1 rounded-lg transition-all active-press shadow-3d-btn-slate cursor-pointer whitespace-nowrap"
+                title="Cancelar"
+              >
+                Não
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setConfirmReset(true)}
+              className="px-3 py-1.5 bg-white hover:bg-rose-50 text-rose-600 hover:text-rose-700 border border-slate-200 rounded-xl text-xs font-bold shadow-3d-sm hover:shadow-3d-md hover:border-rose-200/50 active-press transition-all cursor-pointer"
+              title="Restaurar Banco de Dados ao estado padrão de testes"
+            >
+              Restaurar Seeds
+            </button>
+          )}
         </div>
       </div>
 
@@ -262,6 +475,7 @@ export default function AdminDashboard({
                       setMapSelectedUser(u);
                       setActiveTab('map');
                     }}
+                    className="h-full"
                   />
                 </div>
               </div>
@@ -279,7 +493,7 @@ export default function AdminDashboard({
                   <div key={emp.id} className="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-100 rounded-xl">
                     <div className="flex items-center gap-3">
                       <div className="relative">
-                        <img src={emp.avatar} alt={emp.name} className="w-8 h-8 rounded-full object-cover" />
+                        <img src={getAvatarUrl(emp)} alt={emp.name} className="w-8 h-8 rounded-full object-cover" />
                         <span className={`absolute bottom-0 right-0 w-2 h-2 rounded-full border border-white ${
                           emp.status === 'working' ? 'bg-emerald-500' : emp.status === 'idle' ? 'bg-amber-400' : 'bg-slate-400'
                         }`} />
@@ -480,7 +694,15 @@ export default function AdminDashboard({
 
                       <div className="flex items-center justify-between border-t border-slate-100 mt-3 pt-2 text-[10px] text-slate-500">
                         <span>Cliente: <strong>{order.clientName}</strong></span>
-                        <span>Atribuído a: <strong>{order.assignedEmployeeName || 'Sem designação'}</strong></span>
+                        <div className="flex items-center gap-1.5">
+                          {order.price ? (
+                            <span className="font-mono text-emerald-700 font-black bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100/60" title={`Pago via ${order.paymentMethod?.toUpperCase() || 'Cartão'}`}>
+                              R$ {order.price.toFixed(2).replace('.', ',')}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400">Atribuído a: <strong>{order.assignedEmployeeName || 'Sem designação'}</strong></span>
+                          )}
+                        </div>
                       </div>
                     </div>
                   );
@@ -596,6 +818,43 @@ export default function AdminDashboard({
                         <p className="mt-1 font-medium italic">{selectedOS.pauseReason}</p>
                       </div>
                     )}
+
+                    {/* Billing & Financial Tracking Block */}
+                    <div className="bg-slate-50 border border-slate-200 p-3.5 rounded-xl mt-3 space-y-2.5">
+                      <h5 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Informações de Cobrança</h5>
+                      <div className="grid grid-cols-2 gap-2 text-[10px]">
+                        <div>
+                          <span className="text-slate-400 block uppercase font-bold text-[8px] leading-none">Status de Pagamento</span>
+                          <span className={`inline-block font-black uppercase mt-1 ${selectedOS.price ? 'text-emerald-700' : 'text-slate-500'}`}>
+                            {selectedOS.price ? '● Pago & Liquidado' : '● Cortesia / Pendente'}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-slate-400 block uppercase font-bold text-[8px] leading-none">Valor Cobrado</span>
+                          <span className="font-extrabold text-slate-800 mt-1 block font-mono">
+                            {selectedOS.price ? `R$ ${selectedOS.price.toFixed(2).replace('.', ',')}` : 'R$ 0,00'}
+                          </span>
+                        </div>
+                        {selectedOS.price && (
+                          <>
+                            <div>
+                              <span className="text-slate-400 block uppercase font-bold text-[8px] leading-none">Método</span>
+                              <span className="font-bold text-slate-700 mt-1 block uppercase">
+                                {selectedOS.paymentMethod === 'pix' ? 'Pix Instantâneo' : `Cartão (${selectedOS.paymentMethod === 'credit' ? 'Crédito' : 'Débito'})`}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-slate-400 block uppercase font-bold text-[8px] leading-none">Data do Pagamento</span>
+                              <span className="font-mono text-slate-600 mt-1 block">
+                                {selectedOS.paymentDate 
+                                  ? new Date(selectedOS.paymentDate).toLocaleString('pt-BR') 
+                                  : new Date(selectedOS.createdAt).toLocaleString('pt-BR')}
+                              </span>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </div>
               ) : (
@@ -612,69 +871,162 @@ export default function AdminDashboard({
         {/* TAB 3: EMPLOYEES */}
         {activeTab === 'employees' && (
           <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
-            <div className="flex items-center justify-between mb-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 border-b border-slate-100 pb-4">
               <div>
-                <h3 className="text-sm font-bold text-slate-900">Equipe de Funcionários</h3>
-                <p className="text-xs text-slate-500">Cadastre novos funcionários e monitore o status de jornada deles</p>
+                <h3 className="text-sm font-bold text-slate-900">Equipe de Funcionários & Administradores</h3>
+                <p className="text-xs text-slate-500">Cadastre, atualize dados cadastrais, endereço, fotos, e visualize a ficha completa dos colaboradores</p>
               </div>
 
-              <button
-                onClick={() => setShowEmployeeModal(true)}
-                className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-3 py-2 rounded-xl flex items-center gap-1.5 transition-all shadow-md"
-              >
-                <UserPlus className="w-4 h-4" />
-                <span>Cadastrar Funcionário</span>
-              </button>
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Role Filters */}
+                <div className="inline-flex rounded-xl p-1 bg-slate-100 border border-slate-200/50">
+                  <button
+                    onClick={() => setRoleFilter('all')}
+                    className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${
+                      roleFilter === 'all'
+                        ? 'bg-white text-slate-800 shadow-sm'
+                        : 'text-slate-500 hover:text-slate-800'
+                    }`}
+                  >
+                    Todos
+                  </button>
+                  <button
+                    onClick={() => setRoleFilter('employee')}
+                    className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${
+                      roleFilter === 'employee'
+                        ? 'bg-white text-emerald-600 shadow-sm'
+                        : 'text-slate-500 hover:text-slate-800'
+                    }`}
+                  >
+                    Técnicos
+                  </button>
+                  <button
+                    onClick={() => setRoleFilter('admin')}
+                    className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${
+                      roleFilter === 'admin'
+                        ? 'bg-white text-indigo-600 shadow-sm'
+                        : 'text-slate-500 hover:text-slate-800'
+                    }`}
+                  >
+                    Administradores
+                  </button>
+                </div>
+
+                <button
+                  onClick={handleOpenCreateUser}
+                  className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-3 py-2 rounded-xl flex items-center gap-1.5 transition-all shadow-md"
+                >
+                  <UserPlus className="w-4 h-4" />
+                  <span>Cadastrar Colaborador</span>
+                </button>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {users.filter(u => u.role === 'employee').map(emp => {
-                const empActiveOrdersCount = orders.filter(o => o.assignedEmployeeId === emp.id && o.status === 'em_andamento').length;
-                return (
-                  <div key={emp.id} className="bg-slate-50 border border-slate-100 p-4 rounded-2xl flex flex-col justify-between gap-4">
-                    <div className="flex items-start gap-3.5">
-                      <div className="relative">
-                        <img src={emp.avatar} alt={emp.name} className="w-11 h-11 rounded-full object-cover border border-white shadow-sm" />
-                        <span className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-white ${
-                          emp.status === 'working' ? 'bg-emerald-500' : emp.status === 'idle' ? 'bg-amber-400' : 'bg-slate-400'
-                        }`} />
-                      </div>
-                      <div className="min-w-0">
-                        <h4 className="text-xs font-black text-slate-800 truncate">{emp.name}</h4>
-                        <p className="text-[10px] text-slate-500 font-mono mt-0.5">{emp.email}</p>
-                        <p className="text-[10px] text-slate-500 mt-0.5">{emp.phone || 'Sem telefone'}</p>
-                      </div>
-                    </div>
+              {users
+                .filter(u => roleFilter === 'all' ? true : u.role === roleFilter)
+                .map(emp => {
+                  const empActiveOrdersCount = orders.filter(o => o.assignedEmployeeId === emp.id && o.status === 'em_andamento').length;
+                  const isSelf = emp.id === currentUser.id;
+                  return (
+                    <div key={emp.id} className="bg-gradient-to-b from-white to-slate-50 border border-slate-200/80 p-4 rounded-2xl flex flex-col justify-between gap-4 shadow-sm hover:shadow-md hover:border-slate-300/60 transition-all duration-200">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-start gap-3.5 min-w-0">
+                          <div className="relative flex-shrink-0">
+                            <img src={getAvatarUrl(emp)} alt={emp.name} className="w-11 h-11 rounded-full object-cover border border-white shadow-sm" />
+                            <span className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-white ${
+                              emp.status === 'working' ? 'bg-emerald-500' : emp.status === 'idle' ? 'bg-amber-400' : 'bg-slate-400'
+                            }`} />
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <h4 className="text-xs font-black text-slate-800 truncate max-w-[130px]">{emp.name}</h4>
+                              {emp.role === 'admin' ? (
+                                <span className="text-[8px] bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded border border-indigo-200 font-bold whitespace-nowrap">Admin</span>
+                              ) : (
+                                <span className="text-[8px] bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded border border-emerald-200 font-bold whitespace-nowrap">Técnico</span>
+                              )}
+                              {emp.isTemporaryPassword && (
+                                <span className="text-[8px] bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded border border-amber-200 font-bold whitespace-nowrap animate-pulse">Provisória</span>
+                              )}
+                              {isSelf && (
+                                <span className="text-[8px] bg-slate-100 text-slate-800 px-1.5 py-0.5 rounded border border-slate-300 font-bold whitespace-nowrap">Você</span>
+                              )}
+                            </div>
+                            <p className="text-[10px] text-slate-500 font-mono mt-0.5 truncate">{emp.email}</p>
+                            <p className="text-[10px] text-slate-500 mt-0.5">{emp.phone || 'Sem telefone'}</p>
+                          </div>
+                        </div>
 
-                    <div className="border-t border-slate-200/60 pt-3 flex items-center justify-between text-[10px]">
-                      <div>
-                        <span className="text-slate-500 block">Status de Atividade</span>
-                        <span className={`font-bold uppercase tracking-wider ${
-                          emp.status === 'working' ? 'text-emerald-600' : emp.status === 'idle' ? 'text-amber-600' : 'text-slate-500'
-                        }`}>
-                          {emp.status === 'working' ? `Ativo (${empActiveOrdersCount} OS)` : emp.status === 'idle' ? 'Disponível' : 'Offline'}
-                        </span>
-                      </div>
-
-                      {emp.lastLatitude && (
-                        <div className="text-right">
-                          <span className="text-slate-500 block">Último Sinal</span>
-                          <button 
-                            onClick={() => {
-                              setMapSelectedUser(emp);
-                              setActiveTab('map');
-                            }}
-                            className="text-emerald-600 hover:text-emerald-700 hover:underline font-mono font-bold flex items-center gap-0.5 justify-end"
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => handleOpenEditUser(emp)}
+                            className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg border border-transparent hover:border-emerald-100 transition-all cursor-pointer"
+                            title="Editar Dados Cadastrais"
                           >
-                            <MapPin className="w-3 h-3" />
-                            <span>Ver Mapa</span>
+                            <Image className="w-4 h-4" />
+                          </button>
+
+                          {onDeleteUser && !isSelf && (
+                            <div className="flex-shrink-0">
+                              {deletingUserId === emp.id ? (
+                                <div className="flex items-center gap-1 bg-rose-50 border border-rose-200 p-1 rounded-xl animate-pulse shadow-sm">
+                                  <button
+                                    onClick={() => {
+                                      onDeleteUser(emp.id);
+                                      setDeletingUserId(null);
+                                    }}
+                                    className="bg-rose-600 hover:bg-rose-700 text-white text-[9px] font-extrabold px-2 py-1 rounded-lg transition-all active:scale-95 cursor-pointer whitespace-nowrap"
+                                    title="Confirmar exclusão"
+                                  >
+                                    Sim
+                                  </button>
+                                  <button
+                                    onClick={() => setDeletingUserId(null)}
+                                    className="bg-slate-200 hover:bg-slate-300 text-slate-700 text-[9px] font-extrabold px-2 py-1 rounded-lg transition-all active:scale-95 cursor-pointer whitespace-nowrap"
+                                    title="Não"
+                                  >
+                                    Não
+                                  </button>
+                                </div>
+                              ) : (
+                                <button
+                                  onClick={() => setDeletingUserId(emp.id)}
+                                  className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg border border-transparent hover:border-rose-100 transition-all cursor-pointer"
+                                  title="Excluir Colaborador"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="border-t border-slate-200/60 pt-3 flex items-center justify-between text-[10px]">
+                        <div>
+                          <span className="text-slate-500 block">Ficha Funcional</span>
+                          <button
+                            onClick={() => setViewingUser(emp)}
+                            className="text-emerald-600 hover:text-emerald-700 hover:underline font-bold flex items-center gap-1 mt-0.5"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                            <span>Ver Ficha Completa</span>
                           </button>
                         </div>
-                      )}
+
+                        <div className="text-right">
+                          <span className="text-slate-500 block">Status de Atividade</span>
+                          <span className={`font-bold uppercase tracking-wider block ${
+                            emp.status === 'working' ? 'text-emerald-600' : emp.status === 'idle' ? 'text-amber-600' : 'text-slate-500'
+                          }`}>
+                            {emp.status === 'working' ? `Ativo (${empActiveOrdersCount} OS)` : emp.status === 'idle' ? 'Disponível' : 'Offline'}
+                          </span>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
             </div>
           </div>
         )}
@@ -713,8 +1065,8 @@ export default function AdminDashboard({
         {activeTab === 'chat' && (
           <div className="space-y-4">
             <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
-              <h3 className="text-sm font-bold text-slate-900 font-sans">Central de Mensagens em Tempo Real</h3>
-              <p className="text-xs text-slate-500">Comunicação corporativa direta com a equipe em campo</p>
+              <h3 className="text-sm font-bold text-slate-900 font-sans">Central de Atendimento & Chat</h3>
+              <p className="text-xs text-slate-500">Atendimento ao cliente em tempo real e comunicação corporativa com a equipe em campo</p>
             </div>
 
             <ZentexChat
@@ -934,14 +1286,14 @@ export default function AdminDashboard({
         </div>
       )}
 
-      {/* MODAL 2: REGISTER EMPLOYEE */}
+      {/* MODAL 2: REGISTER/EDIT EMPLOYEE */}
       {showEmployeeModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl">
+          <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-xl overflow-hidden shadow-2xl">
             <div className="px-5 py-3.5 border-b border-slate-150 flex items-center justify-between">
               <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
                 <UserPlus className="w-5 h-5 text-emerald-600" />
-                <span>Cadastrar Novo Funcionário</span>
+                <span>{editingUser ? 'Atualizar Ficha Cadastral' : 'Cadastrar Novo Colaborador'}</span>
               </h3>
               <button 
                 onClick={() => setShowEmployeeModal(false)}
@@ -951,59 +1303,244 @@ export default function AdminDashboard({
               </button>
             </div>
 
-            <form onSubmit={handleRegisterEmployeeSubmit} className="p-5 space-y-4">
-              <div>
-                <label className="text-[10px] font-bold text-slate-500 uppercase">Nome Completo *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Ex: João Ferreira da Silva"
-                  value={empName}
-                  onChange={(e) => setEmpName(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 mt-1 focus:outline-none focus:border-emerald-500 focus:bg-white transition-all"
-                />
+            <form onSubmit={handleRegisterEmployeeSubmit} className="p-5 space-y-4 max-h-[80vh] overflow-y-auto">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase">Nome Completo *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Ex: João Ferreira da Silva"
+                    value={empName}
+                    onChange={(e) => setEmpName(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 mt-1 focus:outline-none focus:border-emerald-500 focus:bg-white transition-all"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase">Cargo / Função *</label>
+                  <select
+                    required
+                    value={empRole}
+                    onChange={(e) => setEmpRole(e.target.value as 'admin' | 'employee')}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 mt-1 focus:outline-none focus:border-emerald-500 focus:bg-white transition-all"
+                  >
+                    <option value="employee">Técnico de Campo</option>
+                    <option value="admin">Gerente / Administrador</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase">Gênero *</label>
+                  <select
+                    required
+                    value={empGender}
+                    onChange={(e) => {
+                      const newGender = e.target.value as 'male' | 'female' | 'neutral';
+                      setEmpGender(newGender);
+                      
+                      const isDefault = !empAvatar || 
+                        empAvatar.includes('1535713875002-d1d0cf377fde') || 
+                        empAvatar.includes('1494790108377-be9c29b29330') || 
+                        empAvatar.includes('1507003211169-0a1dd7228f2d') ||
+                        empAvatar.includes('1500648767791-00dcc994a43e') ||
+                        empAvatar.includes('1534528741775-53994a69daeb');
+                        
+                      if (isDefault) {
+                        if (newGender === 'female') {
+                          setEmpAvatar('https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150');
+                        } else if (newGender === 'neutral') {
+                          setEmpAvatar('https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150');
+                        } else {
+                          setEmpAvatar('https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150');
+                        }
+                      }
+                    }}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 mt-1 focus:outline-none focus:border-emerald-500 focus:bg-white transition-all"
+                  >
+                    <option value="male">Masculino</option>
+                    <option value="female">Feminino</option>
+                    <option value="neutral">Neutro / Outro</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase">E-mail de Acesso *</label>
+                  <input
+                    type="email"
+                    required
+                    placeholder="Ex: joao@zentex.com"
+                    value={empEmail}
+                    onChange={(e) => setEmpEmail(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 mt-1 focus:outline-none focus:border-emerald-500 focus:bg-white transition-all"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase">Celular / WhatsApp</label>
+                  <input
+                    type="text"
+                    placeholder="Ex: (11) 99999-8888"
+                    value={empPhone}
+                    onChange={(e) => setEmpPhone(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 mt-1 focus:outline-none focus:border-emerald-500 focus:bg-white transition-all"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase">CPF ou RG</label>
+                  <input
+                    type="text"
+                    placeholder="Ex: 123.456.789-00"
+                    value={empDocumentId}
+                    onChange={(e) => setEmpDocumentId(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 mt-1 focus:outline-none focus:border-emerald-500 focus:bg-white transition-all"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase">Data de Nascimento</label>
+                  <input
+                    type="date"
+                    value={empBirthDate}
+                    onChange={(e) => setEmpBirthDate(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 mt-1 focus:outline-none focus:border-emerald-500 focus:bg-white transition-all"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase">Data de Admissão</label>
+                  <input
+                    type="date"
+                    value={empAdmissionDate}
+                    onChange={(e) => setEmpAdmissionDate(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 mt-1 focus:outline-none focus:border-emerald-500 focus:bg-white transition-all"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase">{editingUser ? 'Senha de Acesso' : 'Senha Provisória *'}</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Ex: 123456"
+                    value={empPassword}
+                    onChange={(e) => setEmpPassword(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 mt-1 focus:outline-none focus:border-emerald-500 focus:bg-white transition-all font-mono"
+                  />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase">Endereço Residencial</label>
+                  <input
+                    type="text"
+                    placeholder="Ex: Rua das Flores, 123 - Centro"
+                    value={empAddress}
+                    onChange={(e) => setEmpAddress(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 mt-1 focus:outline-none focus:border-emerald-500 focus:bg-white transition-all"
+                  />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase">Observações Internas (Ficha)</label>
+                  <textarea
+                    rows={2}
+                    placeholder="Anotações de RH, histórico ou observações sobre o colaborador..."
+                    value={empNotes}
+                    onChange={(e) => setEmpNotes(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 mt-1 focus:outline-none focus:border-emerald-500 focus:bg-white transition-all resize-none"
+                  />
+                </div>
               </div>
 
-              <div>
-                <label className="text-[10px] font-bold text-slate-500 uppercase">E-mail Operacional *</label>
-                <input
-                  type="email"
-                  required
-                  placeholder="Ex: joao@zentex.com"
-                  value={empEmail}
-                  onChange={(e) => setEmpEmail(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 mt-1 focus:outline-none focus:border-emerald-500 focus:bg-white transition-all"
-                />
+              <div className="space-y-2 pt-2 border-t border-slate-100">
+                <label className="text-[10px] font-bold text-slate-500 uppercase block">Foto do Perfil</label>
+                
+                {empAvatar ? (
+                  <div className="flex items-center gap-4 p-3 bg-slate-50 border border-slate-200 rounded-xl relative">
+                    <img 
+                      src={empAvatar} 
+                      alt="Preview" 
+                      className="w-16 h-16 rounded-full object-cover border border-white shadow-md bg-slate-200 animate-fade-in" 
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src = "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150";
+                      }}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-bold text-slate-700 truncate">Imagem de perfil selecionada</p>
+                      <p className="text-[10px] text-slate-400 truncate">
+                        {empAvatar.startsWith('data:image') ? 'Arquivo enviado via upload' : empAvatar}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setEmpAvatar('')}
+                        className="text-[10px] text-rose-600 hover:text-rose-700 font-bold mt-1 flex items-center gap-1"
+                      >
+                        <X className="w-3 h-3" />
+                        <span>Remover foto</span>
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div
+                    onDragOver={handleDragOver}
+                    onDragLeave={handleDragLeave}
+                    onDrop={handleDrop}
+                    className={`border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition-all ${
+                      isDragging 
+                        ? 'border-emerald-500 bg-emerald-50/30' 
+                        : 'border-slate-200 bg-slate-50 hover:bg-slate-100/50'
+                    }`}
+                  >
+                    <input
+                      type="file"
+                      id="emp-avatar-upload"
+                      accept="image/*"
+                      onChange={handleFileChange}
+                      className="hidden"
+                    />
+                    <label htmlFor="emp-avatar-upload" className="cursor-pointer block space-y-1.5">
+                      <div className="mx-auto w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center text-slate-500">
+                        <Upload className="w-5 h-5 text-slate-600" />
+                      </div>
+                      <div className="text-xs text-slate-600">
+                        <span className="font-bold text-emerald-600 hover:text-emerald-500">Clique para enviar</span> ou arraste uma foto aqui
+                      </div>
+                      <p className="text-[9px] text-slate-400">PNG, JPG, GIF até 5MB</p>
+                    </label>
+                  </div>
+                )}
+                
+                {/* Fallback to URL */}
+                <div className="pt-1">
+                  <details className="text-slate-500 group">
+                    <summary className="text-[10px] font-semibold text-slate-400 hover:text-slate-600 cursor-pointer list-none flex items-center gap-1">
+                      <span className="transition-transform group-open:rotate-90">▶</span>
+                      <span>Ou cole um link de imagem (URL)</span>
+                    </summary>
+                    <div className="mt-2 pl-3">
+                      <input
+                        type="text"
+                        placeholder="Ex: https://images.unsplash.com/photo-..."
+                        value={empAvatar.startsWith('data:image') ? '' : empAvatar}
+                        onChange={(e) => setEmpAvatar(e.target.value)}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-emerald-500 focus:bg-white transition-all"
+                      />
+                    </div>
+                  </details>
+                </div>
               </div>
 
-              <div>
-                <label className="text-[10px] font-bold text-slate-500 uppercase">Celular / WhatsApp</label>
-                <input
-                  type="text"
-                  placeholder="Ex: (11) 99999-8888"
-                  value={empPhone}
-                  onChange={(e) => setEmpPhone(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 mt-1 focus:outline-none focus:border-emerald-500 focus:bg-white transition-all"
-                />
-              </div>
+              {!editingUser && (
+                <p className="text-[9px] text-slate-400 mt-1 leading-normal">Esta senha provisória deverá ser alterada pelo funcionário em seu primeiro acesso.</p>
+              )}
 
-              <div>
-                <label className="text-[10px] font-bold text-slate-500 uppercase">Foto do Perfil (URL)</label>
-                <input
-                  type="text"
-                  placeholder="Ex: https://images.unsplash.com/photo-..."
-                  value={empAvatar}
-                  onChange={(e) => setEmpAvatar(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 mt-1 focus:outline-none focus:border-emerald-500 focus:bg-white transition-all"
-                />
-              </div>
-
-              <div className="flex gap-2.5 pt-2">
+              <div className="flex gap-2.5 pt-4 border-t border-slate-100">
                 <button
                   type="submit"
                   className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold py-2.5 rounded-lg transition-all shadow-md"
                 >
-                  Cadastrar Técnico
+                  {editingUser ? 'Salvar Alterações' : 'Cadastrar Colaborador'}
                 </button>
                 <button
                   type="button"
@@ -1014,6 +1551,160 @@ export default function AdminDashboard({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 3: VIEW EMPLOYEE PROFILE CARD ("FICHA COMPLETA") */}
+      {viewingUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl">
+            {/* Header banner */}
+            <div className="h-24 bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-600 relative">
+              <button 
+                onClick={() => setViewingUser(null)}
+                className="absolute top-4 right-4 bg-white/20 hover:bg-white/30 text-white p-1.5 rounded-full transition-all text-xs font-bold"
+                title="Fechar"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Profile Avatar & Quick info */}
+            <div className="px-6 pb-4 relative border-b border-slate-100 bg-slate-50/50">
+              <div className="flex flex-col sm:flex-row sm:items-end gap-4 -mt-10 sm:mb-1">
+                <img 
+                  src={getAvatarUrl(viewingUser)} 
+                  alt={viewingUser.name} 
+                  className="w-20 h-20 rounded-full object-cover border-4 border-white shadow-lg bg-white relative z-10" 
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).src = "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150";
+                  }}
+                />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="text-base font-black text-slate-900 leading-tight truncate">{viewingUser.name}</h3>
+                    {viewingUser.role === 'admin' ? (
+                      <span className="text-[9px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded border border-indigo-200 font-bold uppercase tracking-wider">Administrador</span>
+                    ) : (
+                      <span className="text-[9px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded border border-emerald-200 font-bold uppercase tracking-wider">Técnico de Campo</span>
+                    )}
+                    {viewingUser.id === currentUser.id && (
+                      <span className="text-[9px] bg-slate-100 text-slate-800 px-2 py-0.5 rounded border border-slate-300 font-bold uppercase tracking-wider">Sua Conta</span>
+                    )}
+                  </div>
+                  <p className="text-xs text-slate-500 font-medium font-mono mt-0.5">{viewingUser.email}</p>
+                </div>
+                <div className="flex-shrink-0 flex items-center gap-1.5 self-start sm:self-auto">
+                  <span className={`w-2.5 h-2.5 rounded-full ${
+                    viewingUser.status === 'working' ? 'bg-emerald-500 animate-pulse' : viewingUser.status === 'idle' ? 'bg-amber-400' : 'bg-slate-400'
+                  }`} />
+                  <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">
+                    {viewingUser.status === 'working' ? 'Em Atividade' : viewingUser.status === 'idle' ? 'Disponível' : 'Fora de Serviço'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Ficha Details */}
+            <div className="p-6 space-y-6 max-h-[50vh] overflow-y-auto">
+              {/* Grid content */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                {/* Personal Information */}
+                <div className="bg-slate-50 border border-slate-100 p-4 rounded-xl space-y-3.5">
+                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-wider border-b border-slate-200 pb-1.5">Informações Pessoais</h4>
+                  
+                  <div className="space-y-1">
+                    <span className="text-[9px] font-bold text-slate-400 uppercase block">Celular / WhatsApp</span>
+                    <span className="text-xs font-bold text-slate-700">{viewingUser.phone || 'Não informado'}</span>
+                  </div>
+
+                  <div className="space-y-1">
+                    <span className="text-[9px] font-bold text-slate-400 uppercase block">CPF ou RG</span>
+                    <span className="text-xs font-bold text-slate-700">{viewingUser.documentId || 'Não informado'}</span>
+                  </div>
+
+                  <div className="space-y-1">
+                    <span className="text-[9px] font-bold text-slate-400 uppercase block">Data de Nascimento</span>
+                    <span className="text-xs font-bold text-slate-700">
+                      {viewingUser.birthDate ? new Date(viewingUser.birthDate + 'T00:00:00').toLocaleDateString('pt-BR') : 'Não informada'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Professional Information */}
+                <div className="bg-slate-50 border border-slate-100 p-4 rounded-xl space-y-3.5">
+                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-wider border-b border-slate-200 pb-1.5">Dados Corporativos</h4>
+
+                  <div className="space-y-1">
+                    <span className="text-[9px] font-bold text-slate-400 uppercase block">Data de Admissão</span>
+                    <span className="text-xs font-bold text-slate-700">
+                      {viewingUser.admissionDate ? new Date(viewingUser.admissionDate + 'T00:00:00').toLocaleDateString('pt-BR') : 'Não informada'}
+                    </span>
+                  </div>
+
+                  <div className="space-y-1">
+                    <span className="text-[9px] font-bold text-slate-400 uppercase block">Endereço Residencial</span>
+                    <span className="text-xs font-bold text-slate-700">{viewingUser.address || 'Não cadastrado'}</span>
+                  </div>
+
+                  <div className="space-y-1">
+                    <span className="text-[9px] font-bold text-slate-400 uppercase block">Código Funcional (ID)</span>
+                    <span className="text-xs font-mono font-bold text-slate-600">{viewingUser.id}</span>
+                  </div>
+                </div>
+
+                {/* Full Address / Notes (span both columns) */}
+                <div className="sm:col-span-2 bg-slate-50 border border-slate-100 p-4 rounded-xl space-y-2">
+                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-wider border-b border-slate-200 pb-1.5">Observações & Anotações de RH</h4>
+                  <p className="text-xs text-slate-600 font-medium leading-relaxed whitespace-pre-wrap italic">
+                    {viewingUser.notes || 'Sem anotações ou observações internas registradas nesta ficha.'}
+                  </p>
+                </div>
+
+                {/* Signal Tracker coordinates */}
+                {viewingUser.role === 'employee' && viewingUser.lastLatitude && (
+                  <div className="sm:col-span-2 bg-emerald-50/50 border border-emerald-100 p-3.5 rounded-xl flex items-center justify-between text-xs text-emerald-800">
+                    <div className="space-y-1">
+                      <span className="text-[9px] font-black text-emerald-600 uppercase block">Sinal de Localização GPS (Zentex Radar)</span>
+                      <span className="font-mono font-bold text-emerald-700 block mt-0.5">Latitude: {viewingUser.lastLatitude.toFixed(6)} | Longitude: {viewingUser.lastLongitude?.toFixed(6)}</span>
+                    </div>
+                    <button 
+                      onClick={() => {
+                        setMapSelectedUser(viewingUser);
+                        setActiveTab('map');
+                        setViewingUser(null);
+                      }}
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] uppercase tracking-wider px-3 py-1.5 rounded-lg shadow-sm flex items-center gap-1 transition-all active:scale-95"
+                    >
+                      <MapPin className="w-3.5 h-3.5" />
+                      <span>Rastrear no Mapa</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Footer with actions */}
+            <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
+              <button
+                onClick={() => {
+                  handleOpenEditUser(viewingUser);
+                  setViewingUser(null);
+                }}
+                className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-4 py-2 rounded-xl flex items-center gap-1.5 shadow-md transition-all active:scale-95"
+              >
+                <Image className="w-4 h-4" />
+                <span>Editar Dados da Ficha</span>
+              </button>
+
+              <button
+                onClick={() => setViewingUser(null)}
+                className="px-4 py-2 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-all"
+              >
+                Fechar Ficha
+              </button>
+            </div>
           </div>
         </div>
       )}
