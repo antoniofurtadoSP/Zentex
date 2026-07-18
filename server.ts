@@ -3,7 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
-import { initializeApp } from 'firebase-admin/app';
+import { initializeApp, cert } from 'firebase-admin/app';
 import { getFirestore, Firestore } from 'firebase-admin/firestore';
 import { User, ServiceOrder, ChatMessage, TimeCard } from './src/types';
 import { createPixPayment, createCardPayment, getEfiConfig } from './efiService';
@@ -24,21 +24,55 @@ const DATA_FILE = path.join(process.cwd(), 'data.json');
 // Initialize Firebase Admin with Firestore
 let firestore: Firestore | null = null;
 try {
-  const firebaseConfigPath = path.join(process.cwd(), 'firebase-applet-config.json');
-  if (fs.existsSync(firebaseConfigPath)) {
-    const config = JSON.parse(fs.readFileSync(firebaseConfigPath, 'utf-8'));
-    const firebaseApp = initializeApp({
-      projectId: config.projectId,
+  let firebaseApp;
+  let firestoreDatabaseId = '(default)';
+
+  if (process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON) {
+    console.log('Initializing Firebase Admin via GOOGLE_APPLICATION_CREDENTIALS_JSON environment variable.');
+    const serviceAccount = JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON);
+    
+    let dbId = '(default)';
+    const firebaseConfigPath = path.join(process.cwd(), 'firebase-applet-config.json');
+    if (fs.existsSync(firebaseConfigPath)) {
+      try {
+        const config = JSON.parse(fs.readFileSync(firebaseConfigPath, 'utf-8'));
+        if (config.firestoreDatabaseId) {
+          dbId = config.firestoreDatabaseId;
+        }
+      } catch (e) {
+        // Safe fallback if parsing fails
+      }
+    }
+    
+    firebaseApp = initializeApp({
+      credential: cert(serviceAccount),
+      projectId: serviceAccount.project_id
     });
-    // Create Firestore instance with specific databaseId if provided
-    if (config.firestoreDatabaseId && config.firestoreDatabaseId !== '(default)') {
-      firestore = getFirestore(firebaseApp, config.firestoreDatabaseId);
+    
+    firestoreDatabaseId = dbId;
+    if (dbId && dbId !== '(default)') {
+      firestore = getFirestore(firebaseApp, dbId);
     } else {
       firestore = getFirestore(firebaseApp);
     }
-    console.log('Firebase Admin initialized. Firestore Database ID:', config.firestoreDatabaseId || '(default)');
+    console.log('Firebase Admin initialized using Service Account Cert. Firestore Database ID:', firestoreDatabaseId);
   } else {
-    console.warn('firebase-applet-config.json not found. Running in local fallback mode.');
+    const firebaseConfigPath = path.join(process.cwd(), 'firebase-applet-config.json');
+    if (fs.existsSync(firebaseConfigPath)) {
+      const config = JSON.parse(fs.readFileSync(firebaseConfigPath, 'utf-8'));
+      firebaseApp = initializeApp({
+        projectId: config.projectId,
+      });
+      firestoreDatabaseId = config.firestoreDatabaseId || '(default)';
+      if (config.firestoreDatabaseId && config.firestoreDatabaseId !== '(default)') {
+        firestore = getFirestore(firebaseApp, config.firestoreDatabaseId);
+      } else {
+        firestore = getFirestore(firebaseApp);
+      }
+      console.log('Firebase Admin initialized. Firestore Database ID:', firestoreDatabaseId);
+    } else {
+      console.warn('firebase-applet-config.json and GOOGLE_APPLICATION_CREDENTIALS_JSON not found. Running in local fallback mode.');
+    }
   }
 } catch (error) {
   console.warn('Firebase failed to initialize. Falling back to local data.json storage.', error);
