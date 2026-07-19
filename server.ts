@@ -350,6 +350,16 @@ async function deleteUserFromFirestore(id: string) {
   }
 }
 
+async function deleteOrderFromFirestore(id: string) {
+  if (!firestore) return;
+  try {
+    await firestore.collection('orders').doc(id).delete();
+    console.log(`Successfully deleted order ${id} from Firestore.`);
+  } catch (err) {
+    console.error(`Failed to delete order ${id} from Firestore:`, err);
+  }
+}
+
 async function saveOrderToFirestore(order: ServiceOrder) {
   if (!firestore) return;
   try {
@@ -1150,6 +1160,29 @@ app.post('/api/orders', (req, res) => {
   saveDB(db);
   saveOrderToFirestore(newOrder);
   res.json(newOrder);
+});
+
+// Delete Service Order
+app.delete('/api/orders/:id', (req, res) => {
+  const db = loadDB();
+  const { id } = req.params;
+
+  const idx = db.orders.findIndex(o => o.id === id);
+  if (idx === -1) {
+    res.status(404).json({ error: 'Ordem de serviço não encontrada.' });
+    return;
+  }
+
+  // Remove from local memory database
+  db.orders.splice(idx, 1);
+  saveDB(db);
+
+  // Sync deletion to Firestore
+  deleteOrderFromFirestore(id).catch(err => {
+    console.error('Failed to sync order deletion to Firestore:', err);
+  });
+
+  res.json({ success: true, message: 'Ordem de serviço excluída com sucesso.' });
 });
 
 // Update Service Order Status

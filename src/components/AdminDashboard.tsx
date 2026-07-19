@@ -17,6 +17,7 @@ interface AdminDashboardProps {
   messages: ChatMessage[];
   onCreateOrder: (order: Partial<ServiceOrder>) => void;
   onUpdateOrderStatus: (id: string, status: any, data?: any) => void;
+  onDeleteOrder?: (id: string) => void;
   onRegisterUser: (user: Partial<User>) => void;
   onDeleteUser?: (id: string) => void;
   onSendMessage: (text: string, receiverId?: string) => void;
@@ -32,6 +33,7 @@ export default function AdminDashboard({
   messages,
   onCreateOrder,
   onUpdateOrderStatus,
+  onDeleteOrder,
   onRegisterUser,
   onDeleteUser,
   onSendMessage,
@@ -602,16 +604,34 @@ export default function AdminDashboard({
                           </span>
                         </td>
                         <td className="p-3">
-                          <button
-                            onClick={() => {
-                              setSelectedOS(order);
-                              setActiveTab('orders');
-                            }}
-                            className="p-1.5 hover:bg-slate-100 text-slate-600 hover:text-slate-900 rounded-lg transition-colors border border-slate-200"
-                            title="Ver detalhes"
-                          >
-                            <Eye className="w-4 h-4" />
-                          </button>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              onClick={() => {
+                                setSelectedOS(order);
+                                setActiveTab('orders');
+                              }}
+                              className="p-1.5 hover:bg-slate-100 text-slate-600 hover:text-slate-900 rounded-lg transition-colors border border-slate-200"
+                              title="Ver detalhes"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </button>
+                            {onDeleteOrder && (
+                              <button
+                                onClick={() => {
+                                  if (window.confirm(`Tem certeza que deseja excluir a Ordem de Serviço ${order.id}?`)) {
+                                    onDeleteOrder(order.id);
+                                    if (selectedOS?.id === order.id) {
+                                      setSelectedOS(null);
+                                    }
+                                  }
+                                }}
+                                className="p-1.5 hover:bg-rose-50 text-rose-600 hover:text-rose-800 rounded-lg transition-colors border border-rose-100"
+                                title="Excluir OS"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -676,20 +696,39 @@ export default function AdminDashboard({
                           </p>
                         </div>
 
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap ${
-                          order.status === 'em_andamento'
-                            ? 'bg-emerald-50 text-emerald-700'
-                            : order.status === 'pausada'
-                              ? 'bg-amber-50 text-amber-700'
-                              : order.status === 'concluida'
-                                ? 'bg-slate-100 text-slate-600'
-                                : 'bg-indigo-50 text-indigo-700'
-                        }`}>
-                          {order.status === 'em_andamento' ? 'Executando' 
-                           : order.status === 'pausada' ? 'Pausada'
-                           : order.status === 'concluida' ? 'Concluída' 
-                           : 'Aberta'}
-                        </span>
+                        <div className="flex flex-col items-end gap-2">
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap ${
+                            order.status === 'em_andamento'
+                              ? 'bg-emerald-50 text-emerald-700'
+                              : order.status === 'pausada'
+                                ? 'bg-amber-50 text-amber-700'
+                                : order.status === 'concluida'
+                                  ? 'bg-slate-100 text-slate-600'
+                                  : 'bg-indigo-50 text-indigo-700'
+                          }`}>
+                            {order.status === 'em_andamento' ? 'Executando' 
+                             : order.status === 'pausada' ? 'Pausada'
+                             : order.status === 'concluida' ? 'Concluída' 
+                             : 'Aberta'}
+                          </span>
+                          {onDeleteOrder && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (window.confirm(`Tem certeza que deseja excluir a Ordem de Serviço ${order.id}?`)) {
+                                  onDeleteOrder(order.id);
+                                  if (selectedOS?.id === order.id) {
+                                    setSelectedOS(null);
+                                  }
+                                }
+                              }}
+                              className="p-1 text-slate-400 hover:text-rose-600 rounded transition-colors"
+                              title="Excluir OS"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
                       </div>
 
                       <div className="flex items-center justify-between border-t border-slate-100 mt-3 pt-2 text-[10px] text-slate-500">
@@ -855,6 +894,24 @@ export default function AdminDashboard({
                         )}
                       </div>
                     </div>
+
+                    {/* Delete OS Action */}
+                    {onDeleteOrder && (
+                      <div className="pt-4 border-t border-slate-100 mt-4 flex justify-end">
+                        <button
+                          onClick={() => {
+                            if (window.confirm(`Tem certeza que deseja excluir a Ordem de Serviço ${selectedOS.id}?`)) {
+                              onDeleteOrder(selectedOS.id);
+                              setSelectedOS(null);
+                            }
+                          }}
+                          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-rose-50 hover:bg-rose-100 border border-rose-200/60 text-rose-700 hover:text-rose-800 text-xs font-bold rounded-xl transition-all shadow-sm"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                          <span>Excluir Ordem de Serviço</span>
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               ) : (

@@ -307,6 +307,22 @@ export default function App() {
     }
   };
 
+  const handleDeleteOrder = async (id: string) => {
+    try {
+      const response = await fetch(`/api/orders/${id}`, {
+        method: 'DELETE'
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        alert(data.error || 'Erro ao excluir ordem de serviço.');
+        return;
+      }
+      await loadData();
+    } catch {
+      alert('Erro ao excluir ordem de serviço.');
+    }
+  };
+
   const handleLogin = async (email: string, password: string): Promise<boolean> => {
     try {
       const response = await fetch('/api/login', {
@@ -583,6 +599,7 @@ export default function App() {
             messages={db.chats}
             onCreateOrder={handleCreateOrder}
             onUpdateOrderStatus={handleUpdateOrderStatus}
+            onDeleteOrder={handleDeleteOrder}
             onRegisterUser={handleRegisterUser}
             onDeleteUser={handleDeleteUser}
             onSendMessage={handleSendMessage}
