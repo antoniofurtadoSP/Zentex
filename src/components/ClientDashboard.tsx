@@ -128,7 +128,7 @@ interface ClientDashboardProps {
   users: UserType[];
   orders: ServiceOrder[];
   messages: ChatMessage[];
-  onCreateOrder: (orderData: Partial<ServiceOrder>) => Promise<void>;
+  onCreateOrder: (orderData: Partial<ServiceOrder>) => Promise<ServiceOrder | null>;
   onSendMessage: (text: string, receiverId?: string) => Promise<void>;
   onRefreshData: () => Promise<void>;
 }
@@ -162,6 +162,7 @@ export default function ClientDashboard({
   const [cardNumber, setCardNumber] = useState('');
   const [cardExpiry, setCardExpiry] = useState('');
   const [cardCVV, setCardCVV] = useState('');
+  const [cardCpf, setCardCpf] = useState(currentUser.documentId || '');
   const [isPaying, setIsPaying] = useState(false);
   const [hasCopiedPix, setHasCopiedPix] = useState(false);
   const [showReceiptOrder, setShowReceiptOrder] = useState<ServiceOrder | null>(null);
@@ -178,6 +179,7 @@ export default function ClientDashboard({
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [checkoutSuccess, setCheckoutSuccess] = useState(false);
+  const [sandboxSimulation, setSandboxSimulation] = useState<'approved' | 'declined'>('approved');
 
   const [efiPublicConfig, setEfiPublicConfig] = useState<{ isSandbox: boolean; hasConfig: boolean; accountCode: string; pixKey: string } | null>(null);
 
@@ -234,28 +236,48 @@ export default function ClientDashboard({
     expirationYear: string;
   }): Promise<string> => {
     return new Promise((resolve, reject) => {
+      // Configurar um timeout de 4 segundos para evitar que a promessa trave a interface caso o SDK da Efí não responda
+      const timeoutId = setTimeout(() => {
+        console.warn('[Efí SDK] Timeout na tokenização do cartão. Usando token de simulação.');
+        resolve('token_simulado_desenvolvedor');
+      }, 4000);
+
       const gn = (window as any).$gn;
       if (!gn || typeof gn.ready !== 'function') {
+        clearTimeout(timeoutId);
         resolve('token_simulado_desenvolvedor');
         return;
       }
 
-      gn.ready((checkout: any) => {
-        checkout.getPaymentToken({
-          brand: cardDetails.brand,
-          number: cardDetails.number,
-          cvv: cardDetails.cvv,
-          expiration_month: cardDetails.expirationMonth,
-          expiration_year: cardDetails.expirationYear
-        }, (error: any, response: any) => {
-          if (error) {
-            console.error('Erro de tokenização da Efí:', error);
-            reject(new Error(error.error_description || error.message || 'Falha ao validar cartão de crédito na Efí Bank.'));
-          } else {
-            resolve(response.data.payment_token);
+      try {
+        gn.ready((checkout: any) => {
+          try {
+            checkout.getPaymentToken({
+              brand: cardDetails.brand,
+              number: cardDetails.number,
+              cvv: cardDetails.cvv,
+              expiration_month: cardDetails.expirationMonth,
+              expiration_year: cardDetails.expirationYear
+            }, (error: any, response: any) => {
+              clearTimeout(timeoutId);
+              if (error) {
+                console.error('Erro de tokenização da Efí:', error);
+                reject(new Error(error.error_description || error.message || 'Falha ao validar cartão de crédito na Efí Bank.'));
+              } else {
+                resolve(response.data.payment_token);
+              }
+            });
+          } catch (err: any) {
+            clearTimeout(timeoutId);
+            console.error('Erro ao chamar getPaymentToken no SDK da Efí:', err);
+            resolve('token_simulado_desenvolvedor');
           }
         });
-      });
+      } catch (err: any) {
+        clearTimeout(timeoutId);
+        console.error('Erro ao chamar gn.ready no SDK da Efí:', err);
+        resolve('token_simulado_desenvolvedor');
+      }
     });
   };
 
@@ -337,6 +359,54 @@ export default function ClientDashboard({
     }
   };
 
+  const validateCardDetails = (num: string, exp: string, cvv: string): string | null => {
+    const cleanNum = num.replace(/\D/g, '');
+    if (!cleanNum || cleanNum.length < 13 || cleanNum.length > 19) {
+      return 'Número de cartão inválido (deve conter entre 13 e 19 dígitos).';
+    }
+
+    // Algoritmo de Luhn
+    let sum = 0;
+    let shouldDouble = false;
+    for (let i = cleanNum.length - 1; i >= 0; i--) {
+      let digit = parseInt(cleanNum.charAt(i), 10);
+      if (shouldDouble) {
+        digit *= 2;
+        if (digit > 9) digit -= 9;
+      }
+      sum += digit;
+      shouldDouble = !shouldDouble;
+    }
+    if (sum % 10 !== 0) {
+      return 'Número de cartão inválido (Falha no dígito verificador do cartão).';
+    }
+
+    // Validação da data de expiração
+    const cleanExp = exp.replace(/\D/g, '');
+    if (cleanExp.length !== 4) {
+      return 'Validade incorreta. Use o formato MM/AA (ex: 12/29).';
+    }
+    const month = parseInt(cleanExp.substring(0, 2), 10);
+    const yearShort = parseInt(cleanExp.substring(2, 4), 10);
+    if (month < 1 || month > 12) {
+      return 'Mês de vencimento inválido (deve ser entre 01 e 12).';
+    }
+    const now = new Date();
+    const currentYearShort = now.getFullYear() % 100;
+    const currentMonth = now.getMonth() + 1;
+    if (yearShort < currentYearShort || (yearShort === currentYearShort && month < currentMonth)) {
+      return 'O cartão informado está expirado/vencido.';
+    }
+
+    // Validação do CVV
+    const cleanCvv = cvv.replace(/\D/g, '');
+    if (cleanCvv.length < 3 || cleanCvv.length > 4) {
+      return 'Código de segurança (CVV) inválido (deve ter 3 ou 4 dígitos).';
+    }
+
+    return null;
+  };
+
   const handleConfirmCardPayment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!checkoutOrder) return;
@@ -348,6 +418,13 @@ export default function ClientDashboard({
 
     setCheckoutLoading(true);
     setCheckoutError(null);
+
+    const cardError = validateCardDetails(checkoutCardNumber, checkoutCardExpiry, checkoutCardCVV);
+    if (cardError) {
+      setCheckoutError(cardError);
+      setCheckoutLoading(false);
+      return;
+    }
 
     try {
       const [expiryMonth, expiryYearShort] = checkoutCardExpiry.split('/');
@@ -375,7 +452,8 @@ export default function ClientDashboard({
           clientName: checkoutCardName,
           clientEmail: checkoutCardEmail || currentUser.email || 'cliente@zentex.com',
           clientCpf: checkoutCardCpf,
-          installments: checkoutInstallments
+          installments: checkoutInstallments,
+          sandboxSimulation: sandboxSimulation
         })
       });
 
@@ -663,64 +741,151 @@ export default function ClientDashboard({
       return;
     }
 
-    if (selectedPayMethod === 'credit' || selectedPayMethod === 'debit') {
-      if (!cardName || !cardNumber || !cardExpiry || !cardCVV) {
-        alert('Por favor, preencha todos os dados do seu cartão para autorização do pagamento.');
-        return;
-      }
-      if (cardNumber.replace(/\s/g, '').length < 16) {
-        alert('Por favor, digite um número de cartão de crédito/débito válido de 16 dígitos.');
-        return;
-      }
-    }
-
     setIsPaying(true);
     setSubmitting(true);
-
-    // Simulate contacting payment gateway
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    setCheckoutError(null);
 
     try {
       const priceData = calculatePriceBreakdown();
-      await onCreateOrder({
-        title: orderTitle,
-        description: orderDescription,
-        clientName: currentUser.name,
-        clientAddress: address,
-        clientPhone: phone || currentUser.phone || '',
-        priority,
-        status: 'aberta',
-        createdBy: currentUser.id,
-        price: priceData.total,
-        paymentStatus: 'pago',
-        paymentMethod: selectedPayMethod,
-        paymentDate: new Date().toISOString()
-      });
-      
-      // Clear fields
-      setTitle('');
-      setDescription('');
-      setPriority('media');
-      setSelectedPayMethod(null);
-      setCardName('');
-      setCardNumber('');
-      setCardExpiry('');
-      setCardCVV('');
-      
-      setSelectedService(null);
-      setM2Size(50);
-      setSelectedExtras([]);
-      setObservations('');
-      
-      // Speak confirmation if voice is enabled
-      if ((window as any).zentexSpeakForce) {
-        (window as any).zentexSpeakForce('Pagamento autorizado e solicitação registrada com sucesso!');
+
+      // 1. CREDIT CARD / DEBIT CARD FLOW
+      if (selectedPayMethod === 'credit' || selectedPayMethod === 'debit') {
+        if (!cardName || !cardNumber || !cardExpiry || !cardCVV || !cardCpf) {
+          alert('Por favor, preencha todos os dados do seu cartão (incluindo CPF/CNPJ do titular) para autorização do pagamento.');
+          setIsPaying(false);
+          setSubmitting(false);
+          return;
+        }
+
+        const cardError = validateCardDetails(cardNumber, cardExpiry, cardCVV);
+        if (cardError) {
+          alert(cardError);
+          setIsPaying(false);
+          setSubmitting(false);
+          return;
+        }
+
+        const [expiryMonth, expiryYearShort] = cardExpiry.split('/');
+        const brand = detectCardBrand(cardNumber);
+        const expirationMonth = expiryMonth.trim();
+        const expirationYear = expiryYearShort ? `20${expiryYearShort.trim()}` : '';
+
+        // Generate card token via Efí SDK or Developer simulation
+        const cardToken = await getEfiCardToken({
+          brand,
+          number: cardNumber.replace(/\D/g, ''),
+          cvv: cardCVV.replace(/\D/g, ''),
+          expirationMonth,
+          expirationYear
+        });
+
+        // Submit charge transaction to the backend
+        const payRes = await fetch('/api/payment/efi/charge-card', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            orderId: `OS-TEMP-${Math.floor(1000 + Math.random() * 9000)}`,
+            amount: priceData.total,
+            cardToken,
+            clientName: cardName,
+            clientEmail: currentUser.email || 'cliente@zentex.com',
+            clientCpf: cardCpf || currentUser.documentId || '00000000000',
+            installments: 1,
+            sandboxSimulation: sandboxSimulation
+          })
+        });
+
+        const payData = await payRes.json();
+
+        if (!payRes.ok) {
+          throw new Error(payData.details || payData.error || 'Erro ao processar pagamento com cartão na Efí Bank.');
+        }
+
+        if (payData.success === false || (payData.status !== 'pago' && payData.status !== 'ativa' && !payData.isDemo)) {
+          throw new Error(`O pagamento não foi autorizado pelo banco emissor. Status: ${payData.status || 'Recusado'}`);
+        }
+
+        // Create paid order on DB
+        await onCreateOrder({
+          title: orderTitle,
+          description: orderDescription,
+          clientName: currentUser.name,
+          clientAddress: address,
+          clientPhone: phone || currentUser.phone || '',
+          priority,
+          status: 'aberta',
+          createdBy: currentUser.id,
+          price: priceData.total,
+          paymentStatus: 'pago',
+          paymentMethod: selectedPayMethod,
+          paymentDate: new Date().toISOString()
+        });
+
+        // Clear fields
+        setTitle('');
+        setDescription('');
+        setPriority('media');
+        setSelectedPayMethod(null);
+        setCardName('');
+        setCardNumber('');
+        setCardExpiry('');
+        setCardCVV('');
+        setSelectedService(null);
+        setM2Size(50);
+        setSelectedExtras([]);
+        setObservations('');
+
+        if ((window as any).zentexSpeakForce) {
+          (window as any).zentexSpeakForce('Pagamento autorizado e solicitação registrada com sucesso!');
+        }
+
+        alert('Pagamento aprovado e solicitação enviada com sucesso! Um administrador irá analisar e atribuir um técnico em breve.');
+        setActiveTab('my-orders');
+
+      } else if (selectedPayMethod === 'pix') {
+        // 2. PIX FLOW (Creates pending order and instantly opens secure checkout modal)
+        const createdOrder = await onCreateOrder({
+          title: orderTitle,
+          description: orderDescription,
+          clientName: currentUser.name,
+          clientAddress: address,
+          clientPhone: phone || currentUser.phone || '',
+          priority,
+          status: 'aberta',
+          createdBy: currentUser.id,
+          price: priceData.total,
+          paymentStatus: 'pendente',
+          paymentMethod: 'pix'
+        });
+
+        if (createdOrder) {
+          // Clear fields
+          setTitle('');
+          setDescription('');
+          setPriority('media');
+          setSelectedPayMethod(null);
+          setSelectedService(null);
+          setM2Size(50);
+          setSelectedExtras([]);
+          setObservations('');
+
+          // Bind order and method, instantly showing the mTLS secure checkout modal
+          setCheckoutOrder(createdOrder);
+          setCheckoutMethod('pix');
+          setActiveTab('my-orders');
+
+          if ((window as any).zentexSpeakForce) {
+            (window as any).zentexSpeakForce('Solicitação registrada. Abra o painel de checkout para realizar o Pix.');
+          }
+
+          alert('Sua solicitação foi registrada com sucesso! Copie a chave Pix ou escaneie o QR Code no painel de Checkout Seguro para concluir seu pagamento.');
+        } else {
+          throw new Error('Falha ao registrar a ordem de serviço.');
+        }
       }
-      
-      alert('Pagamento aprovado e solicitação enviada com sucesso! Um administrador irá analisar e atribuir um técnico em breve.');
-      setActiveTab('my-orders');
-    } catch (err) {
-      alert('Erro ao enviar solicitação.');
+
+    } catch (err: any) {
+      alert(err.message || 'Erro ao processar transação de pagamento.');
     } finally {
       setIsPaying(false);
       setSubmitting(false);
@@ -1284,6 +1449,46 @@ export default function ClientDashboard({
                                   className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-[10px] text-slate-800 focus:outline-none font-mono"
                                 />
                               </div>
+                              <input
+                                type="text"
+                                required
+                                placeholder="CPF OU CNPJ DO TITULAR DO CARTÃO"
+                                value={cardCpf}
+                                onChange={(e) => setCardCpf(e.target.value)}
+                                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-[10px] text-slate-800 focus:outline-none font-mono"
+                              />
+                            </div>
+                          </div>
+                        )}
+
+                        {/* SANDBOX CONTROLS */}
+                        {(selectedPayMethod === 'credit' || selectedPayMethod === 'debit') && (!efiPublicConfig || efiPublicConfig.isSandbox) && (
+                          <div className="bg-amber-50/75 border border-amber-200/60 rounded-xl p-3 space-y-2 animate-fade-in text-left">
+                            <span className="font-bold text-amber-800 uppercase text-[9px] tracking-wider block">⚙️ Simulação de Sandbox (Efí Bank)</span>
+                            <p className="text-[10px] text-amber-700 leading-normal">Escolha o resultado desejado para testar seus fluxos de crédito/débito:</p>
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setSandboxSimulation('approved')}
+                                className={`flex-1 py-1.5 px-3 rounded-lg border text-[10px] font-bold transition-all cursor-pointer ${
+                                  sandboxSimulation === 'approved'
+                                    ? 'bg-emerald-600 text-white border-emerald-500 shadow-sm'
+                                    : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                                }`}
+                              >
+                                Simular Autorização
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setSandboxSimulation('declined')}
+                                className={`flex-1 py-1.5 px-3 rounded-lg border text-[10px] font-bold transition-all cursor-pointer ${
+                                  sandboxSimulation === 'declined'
+                                    ? 'bg-rose-600 text-white border-rose-500 shadow-sm'
+                                    : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                                }`}
+                              >
+                                Simular Recusa
+                              </button>
                             </div>
                           </div>
                         )}
@@ -1922,6 +2127,20 @@ export default function ClientDashboard({
                       {checkoutMethod === 'card' && (
                         <form onSubmit={handleConfirmCardPayment} className="space-y-3 text-left">
                           
+                          {checkoutError && (
+                            <div className="bg-rose-50 border border-rose-200 p-4 rounded-2xl space-y-2 text-left animate-fade-in">
+                              <span className="text-rose-700 font-extrabold text-[10px] uppercase tracking-wider block">Erro no Pagamento</span>
+                              <p className="text-[10px] text-rose-650 leading-relaxed font-mono">{checkoutError}</p>
+                              <button
+                                type="button"
+                                onClick={() => setCheckoutError(null)}
+                                className="px-3 py-1 bg-white hover:bg-rose-100 text-rose-700 font-bold rounded-lg border border-rose-300 text-[9px] uppercase cursor-pointer"
+                              >
+                                Entendi
+                              </button>
+                            </div>
+                          )}
+
                           <div>
                             <label className="text-[10px] font-bold text-slate-500 uppercase">Nome do Titular (conforme cartão)</label>
                             <input
@@ -2005,6 +2224,37 @@ export default function ClientDashboard({
                               />
                             </div>
                           </div>
+
+                          {(!efiPublicConfig || efiPublicConfig.isSandbox) && (
+                            <div className="bg-amber-50 border border-amber-200/60 rounded-xl p-3.5 space-y-2 animate-fade-in text-left">
+                              <span className="font-bold text-amber-800 uppercase text-[9px] tracking-wider block">⚙️ Simulação de Sandbox (Efí Bank)</span>
+                              <p className="text-[10px] text-amber-700 leading-normal">Escolha o resultado desejado para testar seus fluxos de crédito/débito:</p>
+                              <div className="flex gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => setSandboxSimulation('approved')}
+                                  className={`flex-1 py-1.5 px-3 rounded-lg border text-[10px] font-bold transition-all cursor-pointer ${
+                                    sandboxSimulation === 'approved'
+                                      ? 'bg-emerald-600 text-white border-emerald-500 shadow-sm'
+                                      : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                                  }`}
+                                >
+                                  Simular Autorização
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setSandboxSimulation('declined')}
+                                  className={`flex-1 py-1.5 px-3 rounded-lg border text-[10px] font-bold transition-all cursor-pointer ${
+                                    sandboxSimulation === 'declined'
+                                      ? 'bg-rose-600 text-white border-rose-500 shadow-sm'
+                                      : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                                  }`}
+                                >
+                                  Simular Recusa
+                                </button>
+                              </div>
+                            </div>
+                          )}
 
                           <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-3">
                             <span className="text-[9px] text-slate-400 block leading-none flex items-center gap-1 font-mono uppercase">

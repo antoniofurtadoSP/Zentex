@@ -23,6 +23,19 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [globalAlertMessage, setGlobalAlertMessage] = useState<string | null>(null);
+
+  // Safely override window.alert with our custom modern accessible dialog to bypass sandboxed iframe restrictions
+  useEffect(() => {
+    (window as any).alert = (message: any) => {
+      const msgStr = typeof message === 'object' ? JSON.stringify(message) : String(message);
+      setGlobalAlertMessage(msgStr);
+      // Voice feedback if enabled
+      if ((window as any).zentexSpeakForce) {
+        (window as any).zentexSpeakForce(msgStr);
+      }
+    };
+  }, []);
 
   // Accessibility States
   const [fontSize, setFontSize] = useState<string>(() => localStorage.getItem('zentex-font-size') || '100%');
@@ -127,7 +140,74 @@ export default function App() {
       if (!response.ok) {
         throw new Error('Falha ao sincronizar dados com o servidor.');
       }
-      const data = await response.json();
+      let data = await response.json();
+
+      const seedUserIds = ['admin1', 'admin2', 'emp1', 'emp2', 'emp3'];
+      const seedOrderIds = ['OS-1001', 'OS-1002', 'OS-1003', 'OS-1004'];
+
+      // Self-healing synchronization of custom data from browser localStorage
+      let customUsersInStorage: User[] = [];
+      try {
+        customUsersInStorage = JSON.parse(localStorage.getItem('zentex-custom-users') || '[]');
+      } catch (_) {}
+
+      let customOrdersInStorage: ServiceOrder[] = [];
+      try {
+        customOrdersInStorage = JSON.parse(localStorage.getItem('zentex-custom-orders') || '[]');
+      } catch (_) {}
+
+      let needsSync = false;
+
+      // Restore missing custom users
+      for (const localUser of customUsersInStorage) {
+        const exists = data.users.some((u: User) => u.id === localUser.id || u.email.toLowerCase() === localUser.email.toLowerCase());
+        if (!exists) {
+          console.info('[Zentex Sync] Restaurando usuário customizado ausente no servidor:', localUser.name);
+          needsSync = true;
+          try {
+            await fetch('/api/users', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(localUser)
+            });
+          } catch (e) {
+            console.error('Falha ao sincronizar usuário:', e);
+          }
+        }
+      }
+
+      // Restore missing custom orders
+      for (const localOrder of customOrdersInStorage) {
+        const exists = data.orders.some((o: ServiceOrder) => o.id === localOrder.id);
+        if (!exists) {
+          console.info('[Zentex Sync] Restaurando ordem de serviço customizada ausente no servidor:', localOrder.title);
+          needsSync = true;
+          try {
+            await fetch('/api/orders', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(localOrder)
+            });
+          } catch (e) {
+            console.error('Falha ao sincronizar ordem de serviço:', e);
+          }
+        }
+      }
+
+      if (needsSync) {
+        // Re-fetch database to get fully loaded data
+        const reloadResponse = await fetch('/api/data');
+        if (reloadResponse.ok) {
+          data = await reloadResponse.json();
+        }
+      }
+
+      // Update the localStorage cache with current custom users and orders from the server
+      const currentCustomUsers = data.users.filter((u: User) => !seedUserIds.includes(u.id));
+      const currentCustomOrders = data.orders.filter((o: ServiceOrder) => !seedOrderIds.includes(o.id));
+      localStorage.setItem('zentex-custom-users', JSON.stringify(currentCustomUsers));
+      localStorage.setItem('zentex-custom-orders', JSON.stringify(currentCustomOrders));
+
       setDb(data);
       
       const savedUserId = localStorage.getItem('zentex-user-id');
@@ -249,7 +329,7 @@ export default function App() {
   }, [loadData, speakText]);
 
   // Actions
-  const handleCreateOrder = async (orderData: Partial<ServiceOrder>) => {
+  const handleCreateOrder = async (orderData: Partial<ServiceOrder>): Promise<ServiceOrder | null> => {
     try {
       const response = await fetch('/api/orders', {
         method: 'POST',
@@ -257,9 +337,12 @@ export default function App() {
         body: JSON.stringify(orderData)
       });
       if (!response.ok) throw new Error();
+      const createdOrder = await response.json();
       await loadData();
+      return createdOrder;
     } catch {
       alert('Erro ao criar ordem de serviço.');
+      return null;
     }
   };
 
@@ -836,6 +919,28 @@ export default function App() {
               <span>Estas preferências são salvas localmente no navegador de cada técnico.</span>
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {/* GLOBAL CUSTOM NOTIFICATION MODAL (Bypasses sandboxed iframe limitations of window.alert) */}
+      {globalAlertMessage && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white border border-slate-200/80 rounded-3xl max-w-sm w-full p-6 shadow-2xl text-center space-y-4 animate-scale-up">
+            <div className="w-12 h-12 rounded-full bg-emerald-50 border border-emerald-100 flex items-center justify-center mx-auto text-emerald-600">
+              <Info className="w-6 h-6 stroke-[2.5]" />
+            </div>
+            <div className="space-y-1">
+              <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider">Notificação Zentex</h3>
+              <p className="text-[11px] text-slate-500 leading-relaxed whitespace-pre-line text-left">{globalAlertMessage}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setGlobalAlertMessage(null)}
+              className="w-full py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-extrabold rounded-xl text-[10px] uppercase tracking-wider transition-all shadow-md active:scale-95 duration-150 cursor-pointer"
+            >
+              Entendido
+            </button>
           </div>
         </div>
       )}

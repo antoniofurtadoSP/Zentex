@@ -22,8 +22,6 @@ export function getEfiConfig(): EfiConfig | null {
   const certPath = process.env.EFI_CERT_PATH;
   const certBase64 = process.env.EFI_CERT_BASE64;
   let certPassword = process.env.EFI_CERT_PASSWORD || '';
-  const isSandbox = process.env.EFI_SANDBOX === 'true'; // defaults to false (production) for real payments
-
   if (certPassword === 'null' || certPassword === 'undefined') {
     certPassword = '';
   }
@@ -31,6 +29,10 @@ export function getEfiConfig(): EfiConfig | null {
   if (!clientId || !clientSecret || !pixKey) {
     return null;
   }
+
+  const isSandbox = process.env.EFI_SANDBOX === 'true' || 
+    clientId.includes('Sandbox') || 
+    clientId.includes('sandbox');
 
   return {
     clientId,
@@ -427,4 +429,102 @@ export async function createCardPayment(params: {
     console.error('Erro ao processar pagamento por cartão na Efí Bank:', error.response?.data || error.message);
     throw new Error(`Falha no pagamento com cartão: ${JSON.stringify(error.response?.data || error.message)}`);
   }
+}
+
+export function parseEfiErrorDetails(error: any): string {
+  if (error.response?.data) {
+    const data = error.response.data;
+    
+    if (data.error_description) {
+      if (typeof data.error_description === 'string') {
+        return translateEfiMessage(data.error_description);
+      }
+      if (typeof data.error_description === 'object' && data.error_description !== null) {
+        const desc = data.error_description;
+        const field = translateEfiProperty(desc.property || '');
+        const msg = translateEfiMessage(desc.message || '');
+        return field ? `${field}: ${msg}` : msg;
+      }
+    }
+
+    if (data.message) {
+      return translateEfiMessage(data.message);
+    }
+  }
+
+  const rawMessage = error.message || '';
+  if (rawMessage.includes('Falha no pagamento com cartão:')) {
+    try {
+      const jsonStart = rawMessage.indexOf('{');
+      if (jsonStart !== -1) {
+        const jsonStr = rawMessage.substring(jsonStart);
+        const parsed = JSON.parse(jsonStr);
+        if (parsed.error_description) {
+          if (typeof parsed.error_description === 'string') {
+            return translateEfiMessage(parsed.error_description);
+          }
+          if (typeof parsed.error_description === 'object' && parsed.error_description !== null) {
+            const field = translateEfiProperty(parsed.error_description.property || '');
+            const msg = translateEfiMessage(parsed.error_description.message || '');
+            return field ? `${field}: ${msg}` : msg;
+          }
+        }
+      }
+    } catch (_) {}
+  }
+
+  return translateEfiMessage(error.message || 'Erro desconhecido ao processar pagamento por cartão.');
+}
+
+function translateEfiProperty(property: string): string {
+  if (!property) return '';
+  const p = property.toLowerCase();
+  if (p.includes('cpf')) return 'CPF do Titular';
+  if (p.includes('number') || p.includes('numero')) return 'Número do Cartão';
+  if (p.includes('cvv') || p.includes('cvc') || p.includes('security')) return 'Código de Segurança (CVV)';
+  if (p.includes('expiration_month') || p.includes('expirationmonth')) return 'Mês de Validade';
+  if (p.includes('expiration_year') || p.includes('expirationyear')) return 'Ano de Validade';
+  if (p.includes('payment_token')) return 'Token do Cartão';
+  if (p.includes('installments')) return 'Parcelas';
+  if (p.includes('email')) return 'E-mail';
+  if (p.includes('name')) return 'Nome do Titular';
+  return property;
+}
+
+function translateEfiMessage(msg: string): string {
+  if (!msg) return 'Transação recusada ou dados inválidos.';
+  const lower = msg.toLowerCase();
+  
+  if (lower.includes('insufficient funds') || lower.includes('saldo insuficiente')) {
+    return 'Saldo insuficiente no cartão.';
+  }
+  if (lower.includes('expired card') || lower.includes('cartao expirado') || lower.includes('expired_card')) {
+    return 'Cartão expirado ou data de validade incorreta.';
+  }
+  if (lower.includes('invalid card') || lower.includes('cartao invalido') || lower.includes('invalid_card_number') || lower.includes('número de cartão inválido')) {
+    return 'Número do cartão de crédito é inválido.';
+  }
+  if (lower.includes('restricted') || lower.includes('restrito') || lower.includes('card_restricted')) {
+    return 'Cartão bloqueado ou restrito pelo banco emissor.';
+  }
+  if (lower.includes('not authorized') || lower.includes('nao autorizado') || lower.includes('recusado') || lower.includes('reprovado')) {
+    return 'Transação recusada pelo banco emissor. Entre em contato com a operadora do seu cartão.';
+  }
+  if (lower.includes('cpf inválido') || lower.includes('cpf invalido')) {
+    return 'O CPF informado é inválido.';
+  }
+  if (lower.includes('payment_token')) {
+    return 'Token de pagamento inválido ou expirado. Digite os dados novamente.';
+  }
+  if (lower.includes('invalid value') || lower.includes('valor invalido')) {
+    return 'Valor da cobrança inválido.';
+  }
+  if (lower.includes('customer not found')) {
+    return 'Cliente não cadastrado ou dados inválidos.';
+  }
+  if (lower.includes('validation_error') || lower.includes('erro de validação')) {
+    return 'Erro de validação dos campos do cartão.';
+  }
+  
+  return msg;
 }
