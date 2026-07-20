@@ -311,16 +311,20 @@ async function saveDBToFirestore(db: DB) {
     
     // Write all documents (used for initial seed data)
     db.users.forEach(u => {
-      batch.set(firestore!.collection('users').doc(u.id), u);
+      const cleanU = JSON.parse(JSON.stringify(u));
+      batch.set(firestore!.collection('users').doc(u.id), cleanU);
     });
     db.orders.forEach(o => {
-      batch.set(firestore!.collection('orders').doc(o.id), o);
+      const cleanO = JSON.parse(JSON.stringify(o));
+      batch.set(firestore!.collection('orders').doc(o.id), cleanO);
     });
     db.chats.forEach(c => {
-      batch.set(firestore!.collection('chats').doc(c.id), c);
+      const cleanC = JSON.parse(JSON.stringify(c));
+      batch.set(firestore!.collection('chats').doc(c.id), cleanC);
     });
     db.timecards.forEach(tc => {
-      batch.set(firestore!.collection('timecards').doc(tc.id), tc);
+      const cleanTc = JSON.parse(JSON.stringify(tc));
+      batch.set(firestore!.collection('timecards').doc(tc.id), cleanTc);
     });
     
     await batch.commit();
@@ -333,7 +337,8 @@ async function saveDBToFirestore(db: DB) {
 async function saveUserToFirestore(user: User) {
   if (!firestore) return;
   try {
-    await firestore.collection('users').doc(user.id).set(user);
+    const cleanUser = JSON.parse(JSON.stringify(user));
+    await firestore.collection('users').doc(user.id).set(cleanUser);
     console.log(`Successfully synced user ${user.id} (${user.email}) to Firestore.`);
   } catch (err) {
     console.error(`Failed to save user ${user.id} to Firestore:`, err);
@@ -363,7 +368,8 @@ async function deleteOrderFromFirestore(id: string) {
 async function saveOrderToFirestore(order: ServiceOrder) {
   if (!firestore) return;
   try {
-    await firestore.collection('orders').doc(order.id).set(order);
+    const cleanOrder = JSON.parse(JSON.stringify(order));
+    await firestore.collection('orders').doc(order.id).set(cleanOrder);
     console.log(`Successfully synced order ${order.id} to Firestore.`);
   } catch (err) {
     console.error(`Failed to save order ${order.id} to Firestore:`, err);
@@ -373,7 +379,8 @@ async function saveOrderToFirestore(order: ServiceOrder) {
 async function saveChatToFirestore(chat: ChatMessage) {
   if (!firestore) return;
   try {
-    await firestore.collection('chats').doc(chat.id).set(chat);
+    const cleanChat = JSON.parse(JSON.stringify(chat));
+    await firestore.collection('chats').doc(chat.id).set(cleanChat);
     console.log(`Successfully synced chat message ${chat.id} to Firestore.`);
   } catch (err) {
     console.error(`Failed to save chat ${chat.id} to Firestore:`, err);
@@ -383,7 +390,8 @@ async function saveChatToFirestore(chat: ChatMessage) {
 async function saveTimecardToFirestore(tc: TimeCard) {
   if (!firestore) return;
   try {
-    await firestore.collection('timecards').doc(tc.id).set(tc);
+    const cleanTc = JSON.parse(JSON.stringify(tc));
+    await firestore.collection('timecards').doc(tc.id).set(cleanTc);
     console.log(`Successfully synced timecard ${tc.id} to Firestore.`);
   } catch (err) {
     console.error(`Failed to save timecard ${tc.id} to Firestore:`, err);

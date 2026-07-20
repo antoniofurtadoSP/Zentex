@@ -22,7 +22,7 @@ export function getEfiConfig(): EfiConfig | null {
   const certPath = process.env.EFI_CERT_PATH;
   const certBase64 = process.env.EFI_CERT_BASE64;
   let certPassword = process.env.EFI_CERT_PASSWORD || '';
-  const isSandbox = process.env.EFI_SANDBOX !== 'false'; // defaults to true for safety
+  const isSandbox = process.env.EFI_SANDBOX === 'true'; // defaults to false (production) for real payments
 
   if (certPassword === 'null' || certPassword === 'undefined') {
     certPassword = '';
