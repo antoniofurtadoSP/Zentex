@@ -179,6 +179,86 @@ export default function ClientDashboard({
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [checkoutSuccess, setCheckoutSuccess] = useState(false);
 
+  const [efiPublicConfig, setEfiPublicConfig] = useState<{ isSandbox: boolean; hasConfig: boolean; accountCode: string; pixKey: string } | null>(null);
+
+  useEffect(() => {
+    fetch('/api/payment/efi/public-config')
+      .then(res => res.json())
+      .then(data => setEfiPublicConfig(data))
+      .catch(err => console.error('Erro ao buscar configuração Efí:', err));
+  }, []);
+
+  useEffect(() => {
+    if (efiPublicConfig?.hasConfig && efiPublicConfig?.accountCode) {
+      const scriptId = 'efi-payment-sdk';
+      if (!document.getElementById(scriptId)) {
+        const script = document.createElement('script');
+        script.id = scriptId;
+        script.type = 'text/javascript';
+        script.src = efiPublicConfig.isSandbox
+          ? 'https://sandbox.gerencianet.com.br/v1/cdn'
+          : 'https://api.gerencianet.com.br/v1/cdn';
+        script.async = true;
+        
+        (window as any).$gn = [];
+        (window as any).$gn.push(['AccountCode', efiPublicConfig.accountCode]);
+        
+        script.onload = () => {
+          console.log('Efí Bank Payment SDK carregado com sucesso!');
+        };
+        script.onerror = () => {
+          console.error('Erro ao carregar o SDK de Pagamento da Efí Bank.');
+        };
+        document.body.appendChild(script);
+      }
+    }
+  }, [efiPublicConfig]);
+
+  const detectCardBrand = (number: string): string => {
+    const clean = number.replace(/\D/g, '');
+    if (/^4/.test(clean)) return 'visa';
+    if (/^5[1-5]/.test(clean) || /^2[2-7]/.test(clean)) return 'mastercard';
+    if (/^3[47]/.test(clean)) return 'amex';
+    if (/^(606282|5067|4576|4011)/.test(clean)) return 'elo';
+    if (/^50[0-9]/.test(clean)) return 'maestro';
+    if (/^6[045]/.test(clean)) return 'discover';
+    if (/^(38|60)/.test(clean)) return 'hipercard';
+    return 'visa';
+  };
+
+  const getEfiCardToken = (cardDetails: {
+    brand: string;
+    number: string;
+    cvv: string;
+    expirationMonth: string;
+    expirationYear: string;
+  }): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const gn = (window as any).$gn;
+      if (!gn || typeof gn.ready !== 'function') {
+        resolve('token_simulado_desenvolvedor');
+        return;
+      }
+
+      gn.ready((checkout: any) => {
+        checkout.getPaymentToken({
+          brand: cardDetails.brand,
+          number: cardDetails.number,
+          cvv: cardDetails.cvv,
+          expiration_month: cardDetails.expirationMonth,
+          expiration_year: cardDetails.expirationYear
+        }, (error: any, response: any) => {
+          if (error) {
+            console.error('Erro de tokenização da Efí:', error);
+            reject(new Error(error.error_description || error.message || 'Falha ao validar cartão de crédito na Efí Bank.'));
+          } else {
+            resolve(response.data.payment_token);
+          }
+        });
+      });
+    });
+  };
+
   // Fetch real Pix data from Efí Bank when checkout is opened
   useEffect(() => {
     if (!checkoutOrder) {
@@ -270,10 +350,46 @@ export default function ClientDashboard({
     setCheckoutError(null);
 
     try {
-      // Simulate gateway auth delay
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      const [expiryMonth, expiryYearShort] = checkoutCardExpiry.split('/');
+      const brand = detectCardBrand(checkoutCardNumber);
+      const expirationMonth = expiryMonth.trim();
+      const expirationYear = expiryYearShort ? `20${expiryYearShort.trim()}` : '';
 
-      // Update order status to paid
+      // 1. Tokenize card using Efí SDK (returns simulation token if SDK not loaded)
+      const cardToken = await getEfiCardToken({
+        brand,
+        number: checkoutCardNumber.replace(/\D/g, ''),
+        cvv: checkoutCardCVV.replace(/\D/g, ''),
+        expirationMonth,
+        expirationYear
+      });
+
+      // 2. Post payment charge to the server
+      const payRes = await fetch('/api/payment/efi/charge-card', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderId: checkoutOrder.id,
+          amount: checkoutOrder.price,
+          cardToken,
+          clientName: checkoutCardName,
+          clientEmail: checkoutCardEmail || currentUser.email || 'cliente@zentex.com',
+          clientCpf: checkoutCardCpf,
+          installments: checkoutInstallments
+        })
+      });
+
+      const payData = await payRes.json();
+
+      if (!payRes.ok) {
+        throw new Error(payData.details || payData.error || 'Erro ao processar pagamento com cartão na Efí Bank.');
+      }
+
+      if (payData.success === false || (payData.status !== 'pago' && payData.status !== 'ativa' && !payData.isDemo)) {
+        throw new Error(`O pagamento não foi autorizado pelo banco emissor. Status: ${payData.status || 'Recusado'}`);
+      }
+
+      // 3. Register transaction as paid on our systems
       const res = await fetch(`/api/orders/${checkoutOrder.id}/status`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1653,6 +1769,17 @@ export default function ClientDashboard({
                           </span>
                         </div>
                       </div>
+
+                      {/* Environment Indicator */}
+                      {efiPublicConfig && (
+                        <div className={`rounded-xl px-3.5 py-2 flex items-center justify-between text-[9px] font-bold uppercase tracking-wider ${efiPublicConfig.isSandbox ? 'bg-amber-50 text-amber-800 border border-amber-200/50' : 'bg-emerald-50 text-emerald-800 border border-emerald-200/50'}`}>
+                          <div className="flex items-center gap-1.5">
+                            <span className={`w-1.5 h-1.5 rounded-full ${efiPublicConfig.isSandbox ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500'}`} />
+                            <span>Gateway: {efiPublicConfig.isSandbox ? 'Modo de Testes (Sandbox/Homologação)' : 'Modo Real (Produção)'}</span>
+                          </div>
+                          <span>Efí Bank</span>
+                        </div>
+                      )}
 
                       {/* Payment Method Tabs */}
                       <div className="grid grid-cols-2 gap-2 bg-slate-100 p-1.5 rounded-2xl border border-slate-200/50">

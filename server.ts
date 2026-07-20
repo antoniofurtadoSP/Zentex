@@ -1317,6 +1317,17 @@ app.get('/api/payment/efi/config', (req, res) => {
   });
 });
 
+// Public Efí Configuration for the client-side
+app.get('/api/payment/efi/public-config', (req, res) => {
+  const config = getEfiConfig();
+  res.json({
+    isSandbox: config ? config.isSandbox : true,
+    accountCode: process.env.EFI_ACCOUNT_CODE || '',
+    hasConfig: !!config,
+    pixKey: config ? `${config.pixKey.substring(0, 3)}***${config.pixKey.substring(config.pixKey.indexOf('@') > -1 ? config.pixKey.indexOf('@') : Math.max(3, config.pixKey.length - 3))}` : ''
+  });
+});
+
 app.post('/api/payment/efi/create-pix', async (req, res) => {
   const { orderId, amount, clientName, clientCpf } = req.body;
 
