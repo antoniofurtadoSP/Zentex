@@ -41,7 +41,7 @@ export default function AdminDashboard({
   onResetDB
 }: AdminDashboardProps) {
   const [activeTab, setActiveTab] = useState<'overview' | 'orders' | 'employees' | 'map' | 'chat' | 'timecards'>('overview');
-  const [roleFilter, setRoleFilter] = useState<'all' | 'admin' | 'employee'>('all');
+  const [roleFilter, setRoleFilter] = useState<'all' | 'admin' | 'employee' | 'client'>('all');
   const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
   const [confirmReset, setConfirmReset] = useState(false);
 
@@ -82,7 +82,7 @@ export default function AdminDashboard({
   const [empBirthDate, setEmpBirthDate] = useState('');
   const [empAdmissionDate, setEmpAdmissionDate] = useState('');
   const [empNotes, setEmpNotes] = useState('');
-  const [empRole, setEmpRole] = useState<'admin' | 'employee'>('employee');
+  const [empRole, setEmpRole] = useState<'admin' | 'employee' | 'client'>('employee');
   const [empGender, setEmpGender] = useState<'male' | 'female' | 'neutral'>('neutral');
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [viewingUser, setViewingUser] = useState<User | null>(null);
@@ -967,6 +967,16 @@ export default function AdminDashboard({
                   >
                     Administradores
                   </button>
+                  <button
+                    onClick={() => setRoleFilter('client')}
+                    className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${
+                      roleFilter === 'client'
+                        ? 'bg-white text-blue-600 shadow-sm'
+                        : 'text-slate-500 hover:text-slate-800'
+                    }`}
+                  >
+                    Clientes
+                  </button>
                 </div>
 
                 <button
@@ -1000,6 +1010,8 @@ export default function AdminDashboard({
                               <h4 className="text-xs font-black text-slate-800 truncate max-w-[130px]">{emp.name}</h4>
                               {emp.role === 'admin' ? (
                                 <span className="text-[8px] bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded border border-indigo-200 font-bold whitespace-nowrap">Admin</span>
+                              ) : emp.role === 'client' ? (
+                                <span className="text-[8px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded border border-blue-200 font-bold whitespace-nowrap">Cliente</span>
                               ) : (
                                 <span className="text-[8px] bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded border border-emerald-200 font-bold whitespace-nowrap">Técnico</span>
                               )}
@@ -1350,7 +1362,7 @@ export default function AdminDashboard({
             <div className="px-5 py-3.5 border-b border-slate-150 flex items-center justify-between">
               <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
                 <UserPlus className="w-5 h-5 text-emerald-600" />
-                <span>{editingUser ? 'Atualizar Ficha Cadastral' : 'Cadastrar Novo Colaborador'}</span>
+                <span>{editingUser ? 'Atualizar Ficha Cadastral' : empRole === 'client' ? 'Cadastrar Novo Cliente' : 'Cadastrar Novo Colaborador'}</span>
               </h3>
               <button 
                 onClick={() => setShowEmployeeModal(false)}
@@ -1379,11 +1391,12 @@ export default function AdminDashboard({
                   <select
                     required
                     value={empRole}
-                    onChange={(e) => setEmpRole(e.target.value as 'admin' | 'employee')}
+                    onChange={(e) => setEmpRole(e.target.value as 'admin' | 'employee' | 'client')}
                     className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 mt-1 focus:outline-none focus:border-emerald-500 focus:bg-white transition-all"
                   >
                     <option value="employee">Técnico de Campo</option>
                     <option value="admin">Gerente / Administrador</option>
+                    <option value="client">Cliente</option>
                   </select>
                 </div>
 
@@ -1643,6 +1656,8 @@ export default function AdminDashboard({
                     <h3 className="text-base font-black text-slate-900 leading-tight truncate">{viewingUser.name}</h3>
                     {viewingUser.role === 'admin' ? (
                       <span className="text-[9px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded border border-indigo-200 font-bold uppercase tracking-wider">Administrador</span>
+                    ) : viewingUser.role === 'client' ? (
+                      <span className="text-[9px] bg-blue-50 text-blue-700 px-2 py-0.5 rounded border border-blue-200 font-bold uppercase tracking-wider">Cliente</span>
                     ) : (
                       <span className="text-[9px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded border border-emerald-200 font-bold uppercase tracking-wider">Técnico de Campo</span>
                     )}

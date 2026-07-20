@@ -51,7 +51,7 @@ export default function ZentexAuth({
 
   const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!regName || !regEmail || !regPassword || !regAddress) {
+    if (!regName || !regEmail || !regPassword || !regAddress || !regPhone) {
       alert('Por favor, preencha todos os campos obrigatórios.');
       return;
     }
@@ -357,10 +357,11 @@ export default function ZentexAuth({
             </div>
 
             <div>
-              <label className="text-[10px] font-bold text-slate-500 uppercase">WhatsApp / Celular</label>
+              <label className="text-[10px] font-bold text-slate-500 uppercase">WhatsApp / Celular *</label>
               <div className="relative mt-1">
                 <input
                   type="text"
+                  required
                   placeholder="Ex: (11) 99999-0000"
                   value={regPhone}
                   onChange={(e) => setRegPhone(e.target.value)}
