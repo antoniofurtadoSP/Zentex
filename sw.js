@@ -1,4 +1,4 @@
-const CACHE_NAME = 'zentex-v2';
+const CACHE_NAME = 'zentex-v4';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
@@ -48,10 +48,32 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // Network-First for index.html/navigation requests to guarantee instant updates
+  if (event.request.mode === 'navigate' || url.pathname === '/' || url.pathname === '/index.html') {
+    event.respondWith(
+      fetch(event.request)
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            const responseToCache = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(event.request, responseToCache);
+            });
+            return networkResponse;
+          }
+          return caches.match(event.request);
+        })
+        .catch(() => {
+          return caches.match(event.request) || caches.match('/');
+        })
+    );
+    return;
+  }
+
+  // Stale-while-revalidate for assets
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
       if (cachedResponse) {
-        // Fetch in background to update cache for next time (stale-while-revalidate)
+        // Fetch in background to update cache for next time
         fetch(event.request)
           .then((networkResponse) => {
             if (networkResponse && networkResponse.status === 200) {
@@ -76,10 +98,8 @@ self.addEventListener('fetch', (event) => {
           return response;
         })
         .catch(() => {
-          // If offline and navigate mode, fallback to index
-          if (event.request.mode === 'navigate') {
-            return caches.match('/');
-          }
+          // Fallback
+          return caches.match('/');
         });
     })
   );

@@ -2,6 +2,7 @@ import https from 'https';
 import fs from 'fs';
 import path from 'path';
 import axios from 'axios';
+import tls from 'tls';
 
 // Lazy loading client/config to prevent crashing on boot if envs are missing
 export interface EfiConfig {
@@ -20,8 +21,12 @@ export function getEfiConfig(): EfiConfig | null {
   const pixKey = process.env.EFI_PIX_KEY;
   const certPath = process.env.EFI_CERT_PATH;
   const certBase64 = process.env.EFI_CERT_BASE64;
-  const certPassword = process.env.EFI_CERT_PASSWORD || '';
+  let certPassword = process.env.EFI_CERT_PASSWORD || '';
   const isSandbox = process.env.EFI_SANDBOX !== 'false'; // defaults to true for safety
+
+  if (certPassword === 'null' || certPassword === 'undefined') {
+    certPassword = '';
+  }
 
   if (!clientId || !clientSecret || !pixKey) {
     return null;
@@ -55,15 +60,61 @@ function getHttpsAgent(config: EfiConfig): https.Agent {
       throw new Error('Caminho do certificado Efí Bank (.p12) ou EFI_CERT_BASE64 não configurado.');
     }
 
-    const resolvedPath = path.isAbsolute(config.certPath)
+    // Windows to Linux path normalization / absolute vs relative handling
+    let resolvedPath = path.isAbsolute(config.certPath)
       ? config.certPath
       : path.join(process.cwd(), config.certPath);
 
     if (!fs.existsSync(resolvedPath)) {
-      throw new Error(`Arquivo de certificado Efí Bank não encontrado no caminho: ${resolvedPath}`);
+      // Look for local fallbacks if the path doesn't exist (e.g. Windows paths like C:\...)
+      const filename = path.basename(config.certPath.replace(/\\/g, '/'));
+      const localCertificates = [
+        path.join(process.cwd(), 'certificado_pix.p12'),
+        path.join(process.cwd(), filename),
+        path.join(process.cwd(), 'certs', filename)
+      ];
+
+      let fallbackFound = false;
+      for (const fallbackPath of localCertificates) {
+        if (fs.existsSync(fallbackPath)) {
+          console.log(`[Efí Bank] Certificado não encontrado em ${resolvedPath}. Usando fallback encontrado em: ${fallbackPath}`);
+          resolvedPath = fallbackPath;
+          fallbackFound = true;
+          break;
+        }
+      }
+
+      if (!fallbackFound) {
+        // Look for any .p12 file in the root directory as last resort
+        try {
+          const filesInRoot = fs.readdirSync(process.cwd());
+          const p12File = filesInRoot.find(f => f.endsWith('.p12'));
+          if (p12File) {
+            const fallbackPath = path.join(process.cwd(), p12File);
+            console.log(`[Efí Bank] Certificado não encontrado em ${resolvedPath}. Usando fallback de arquivo .p12 encontrado no root: ${fallbackPath}`);
+            resolvedPath = fallbackPath;
+            fallbackFound = true;
+          }
+        } catch (_) {}
+      }
+
+      if (!fallbackFound) {
+        throw new Error(`Arquivo de certificado Efí Bank não encontrado no caminho original (${resolvedPath}) nem nos caminhos de fallback locais.`);
+      }
     }
 
     pfx = fs.readFileSync(resolvedPath);
+  }
+
+  // Validate the certificate and its passphrase synchronously to fail-fast with a friendly message
+  try {
+    tls.createSecureContext({ pfx, passphrase: config.certPassword });
+  } catch (err: any) {
+    if (err.message.includes('too long') || err.message.includes('mac verify failure') || err.message.includes('decryption error')) {
+      throw new Error(`A senha do certificado digital Efí Bank (EFI_CERT_PASSWORD) está incorreta ou ausente. Detalhe técnico: ${err.message}`);
+    } else {
+      throw new Error(`Erro ao validar certificado digital (.p12): ${err.message}`);
+    }
   }
 
   return new https.Agent({

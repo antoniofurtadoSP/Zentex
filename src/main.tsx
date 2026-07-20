@@ -16,7 +16,21 @@ if ('serviceWorker' in navigator) {
       .then((reg) => {
         console.log('[Service Worker] Registered with scope:', reg.scope);
         
-        // Check for updates
+        // Check for updates periodically
+        setInterval(() => {
+          reg.update().catch(() => {});
+        }, 15000);
+
+        // Check for updates on focus/visibility change
+        const checkUpdate = () => {
+          if (document.visibilityState === 'visible') {
+            reg.update().catch(() => {});
+          }
+        };
+        document.addEventListener('visibilitychange', checkUpdate);
+        window.addEventListener('focus', checkUpdate);
+
+        // Check for updates on load
         reg.onupdatefound = () => {
           const installingWorker = reg.installing;
           if (installingWorker) {
