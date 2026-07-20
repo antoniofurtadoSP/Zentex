@@ -1043,7 +1043,7 @@ app.post('/api/change-password', (req, res) => {
 // Employee self-registration endpoint
 app.post('/api/register', (req, res) => {
   const db = loadDB();
-  const { name, email, phone, password, role, gender, address, avatar } = req.body;
+  const { name, email, phone, password, role, gender, address, avatar, documentId } = req.body;
 
   if (!name || !email || !password) {
     res.status(400).json({ error: 'Nome, E-mail e Senha são obrigatórios.' });
@@ -1068,7 +1068,8 @@ app.post('/api/register', (req, res) => {
     isTemporaryPassword: false, // self-registered, so password is NOT temporary
     lastLocationUpdate: (role || 'employee') === 'employee' ? new Date().toISOString() : undefined,
     gender: gender || 'neutral',
-    address: address || ''
+    address: address || '',
+    documentId: documentId || ''
   };
 
   db.users.push(newUser);

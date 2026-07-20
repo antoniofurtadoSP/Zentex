@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Lock, Mail, Key, Eye, EyeOff, Sparkles, User, Phone, MapPin, Smile } from 'lucide-react';
+import { Lock, Mail, Key, Eye, EyeOff, Sparkles, User, Phone, MapPin, Smile, FileText } from 'lucide-react';
 import { User as UserType } from '../types';
 import ZentexLogo from './ZentexLogo';
 
@@ -30,6 +30,7 @@ export default function ZentexAuth({
   const [regName, setRegName] = useState('');
   const [regEmail, setRegEmail] = useState('');
   const [regPhone, setRegPhone] = useState('');
+  const [regDocumentId, setRegDocumentId] = useState('');
   const [regPassword, setRegPassword] = useState('');
   const [regAddress, setRegAddress] = useState('');
   const [regGender, setRegGender] = useState<'female' | 'male'>('female');
@@ -51,7 +52,7 @@ export default function ZentexAuth({
 
   const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!regName || !regEmail || !regPassword || !regAddress || !regPhone) {
+    if (!regName || !regEmail || !regPassword || !regAddress || !regPhone || !regDocumentId) {
       alert('Por favor, preencha todos os campos obrigatórios.');
       return;
     }
@@ -72,7 +73,8 @@ export default function ZentexAuth({
       address: regAddress,
       role: 'client',
       gender: regGender,
-      avatar: regGender === 'female' ? femaleAvatar : maleAvatar
+      avatar: regGender === 'female' ? femaleAvatar : maleAvatar,
+      documentId: regDocumentId
     });
     setLoading(false);
     if (success) {
@@ -368,6 +370,33 @@ export default function ZentexAuth({
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 py-2 text-xs text-slate-800 focus:outline-none focus:border-emerald-500 focus:bg-white transition-all shadow-inner"
                 />
                 <Phone className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+              </div>
+            </div>
+
+            <div>
+              <label className="text-[10px] font-bold text-slate-500 uppercase">CPF do Cliente *</label>
+              <div className="relative mt-1">
+                <input
+                  type="text"
+                  required
+                  placeholder="Ex: 123.456.789-00"
+                  value={regDocumentId}
+                  onChange={(e) => {
+                    let val = e.target.value.replace(/\D/g, '');
+                    if (val.length > 11) val = val.substring(0, 11);
+                    let formatted = val;
+                    if (val.length > 9) {
+                      formatted = `${val.substring(0, 3)}.${val.substring(3, 6)}.${val.substring(6, 9)}-${val.substring(9)}`;
+                    } else if (val.length > 6) {
+                      formatted = `${val.substring(0, 3)}.${val.substring(3, 6)}.${val.substring(6)}`;
+                    } else if (val.length > 3) {
+                      formatted = `${val.substring(0, 3)}.${val.substring(3)}`;
+                    }
+                    setRegDocumentId(formatted);
+                  }}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 py-2 text-xs text-slate-800 focus:outline-none focus:border-emerald-500 focus:bg-white transition-all shadow-inner font-mono"
+                />
+                <FileText className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
               </div>
             </div>
 

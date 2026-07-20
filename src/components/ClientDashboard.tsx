@@ -172,7 +172,7 @@ export default function ClientDashboard({
   const [checkoutCardNumber, setCheckoutCardNumber] = useState('');
   const [checkoutCardExpiry, setCheckoutCardExpiry] = useState('');
   const [checkoutCardCVV, setCheckoutCardCVV] = useState('');
-  const [checkoutCardCpf, setCheckoutCardCpf] = useState('');
+  const [checkoutCardCpf, setCheckoutCardCpf] = useState(currentUser.documentId || '');
   const [checkoutCardEmail, setCheckoutCardEmail] = useState(currentUser.email || '');
   const [checkoutInstallments, setCheckoutInstallments] = useState(1);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
@@ -200,7 +200,7 @@ export default function ClientDashboard({
               orderId: checkoutOrder.id,
               amount: checkoutOrder.price,
               clientName: currentUser.name,
-              clientCpf: checkoutCardCpf // can use CPF if available or leave empty
+              clientCpf: currentUser.documentId || checkoutCardCpf // can use CPF if available or leave empty
             })
           });
 
