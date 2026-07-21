@@ -200,11 +200,19 @@ export default function ClientDashboard({
   }, []);
 
   useEffect(() => {
+    // Check if Account Hash environment variables are defined
+    const envAccountHash = ((import.meta as any).env.VITE_EFI_ACCOUNT_HASH as string) || 
+                           ((import.meta as any).env.NEXT_PUBLIC_EFI_ACCOUNT_HASH as string);
+    
+    if (!envAccountHash) {
+      console.error("[Efí SDK] Chave Account Hash ausente");
+    }
+
     // Determine the active account code and environment, falling back to Vite environment variables if REST API isn't ready
     const activeAccountCode = efiPublicConfig?.accountCode || 
-                              ((import.meta as any).env.VITE_EFI_ACCOUNT_HASH as string) || 
+                              envAccountHash || 
                               ((import.meta as any).env.VITE_EFI_ACCOUNT_CODE as string) || 
-                              '';
+                              'ae970c6d3df39869502a5fb681283626'; // Fallback dummy to allow initialization
     const activeIsSandbox = efiPublicConfig 
       ? efiPublicConfig.isSandbox 
       : ((import.meta as any).env.VITE_EFI_SANDBOX === 'true' || (import.meta as any).env.VITE_EFI_SANDBOX === true);
@@ -315,7 +323,7 @@ export default function ClientDashboard({
       const timeoutId = setTimeout(() => {
         console.warn('[Efí SDK] Timeout na tokenização do cartão.');
         if (!isSandbox) {
-          reject(new Error('Tempo limite esgotado ao tentar validar e criptografar os dados do cartão na Efí Bank. Verifique sua conexão ou tente novamente fora do iframe do AI Studio.'));
+          reject(new Error('Tempo limite esgotado ao tentar validar e criptografar os dados do cartão na Efí Bank.'));
         } else {
           resolve('token_simulado_desenvolvedor');
         }
@@ -325,7 +333,7 @@ export default function ClientDashboard({
       if (!gn || typeof gn.ready !== 'function') {
         clearTimeout(timeoutId);
         if (!isSandbox) {
-          reject(new Error('O SDK seguro de cartão de crédito da Efí Bank não pôde ser carregado ou inicializado. Verifique se o AdBlock está bloqueando scripts de terceiros, ou abra a aplicação em uma nova aba separada fora do iframe do AI Studio.'));
+          reject(new Error('window.$gn indisponível'));
         } else {
           resolve('token_simulado_desenvolvedor');
         }
@@ -359,7 +367,7 @@ export default function ClientDashboard({
             clearTimeout(timeoutId);
             console.error('[Efí Bank SDK] Erro ao chamar getPaymentToken:', err);
             if (!isSandbox) {
-              reject(new Error(`Erro ao gerar hash do cartão: ${err.message || 'Erro interno do SDK da Efí'}`));
+              reject(new Error(err.message || 'Erro interno do SDK da Efí'));
             } else {
               resolve('token_simulado_desenvolvedor');
             }
@@ -369,7 +377,7 @@ export default function ClientDashboard({
         clearTimeout(timeoutId);
         console.error('[Efí Bank SDK] Erro ao chamar gn.ready:', err);
         if (!isSandbox) {
-          reject(new Error(`Falha na inicialização do SDK da Efí: ${err.message || 'Erro de inicialização'}`));
+          reject(new Error(err.message || 'Erro de inicialização do SDK da Efí'));
         } else {
           resolve('token_simulado_desenvolvedor');
         }
@@ -626,7 +634,7 @@ export default function ClientDashboard({
         : ((import.meta as any).env.VITE_EFI_SANDBOX === 'true' || (import.meta as any).env.VITE_EFI_SANDBOX === true);
 
       if (!cardToken || (!activeIsSandbox && cardToken === 'token_simulado_desenvolvedor')) {
-        throw new Error('A geração do token do cartão falhou ou retornou um token inválido para o ambiente de produção. Certifique-se de que não há AdBlocks interferindo e que você não está executando no iframe restrito do AI Studio.');
+        throw new Error('A geração do token do cartão falhou ou retornou um token inválido.');
       }
 
       // 2. Post payment charge to the server
@@ -676,7 +684,9 @@ export default function ClientDashboard({
         onRefreshData();
       }, 2500);
     } catch (err: any) {
+      console.error('[Efí Bank SDK - Erro Crítico]', err);
       setCheckoutError(err.message || 'Erro ao processar cartão.');
+      alert(err.message || 'Erro ao processar cartão.');
     } finally {
       setCheckoutLoading(false);
     }
@@ -994,7 +1004,7 @@ export default function ClientDashboard({
           : ((import.meta as any).env.VITE_EFI_SANDBOX === 'true' || (import.meta as any).env.VITE_EFI_SANDBOX === true);
 
         if (!cardToken || (!activeIsSandbox && cardToken === 'token_simulado_desenvolvedor')) {
-          throw new Error('A geração do token do cartão falhou ou retornou um token inválido para o ambiente de produção. Certifique-se de que não há AdBlocks interferindo e que você não está executando no iframe restrito do AI Studio.');
+          throw new Error('A geração do token do cartão falhou ou retornou um token inválido.');
         }
 
         // Submit charge transaction to the backend
@@ -1103,6 +1113,7 @@ export default function ClientDashboard({
       }
 
     } catch (err: any) {
+      console.error('[Efí Bank SDK - Erro Crítico]', err);
       alert(err.message || 'Erro ao processar transação de pagamento.');
     } finally {
       setIsPaying(false);
