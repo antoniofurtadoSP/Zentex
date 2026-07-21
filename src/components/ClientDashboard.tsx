@@ -207,19 +207,61 @@ export default function ClientDashboard({
     const win = window as any;
     const activeAccountCode = efiPublicConfig?.accountCode || ACCOUNT_HASH || '3931688641e8e06302526275df0fada3';
 
-    if (typeof win.$gn !== 'undefined') {
+    if (win.$gn) {
       try {
         win.$gn.setAccount(activeAccountCode);
-        console.log('[Efí SDK] Chave Account Hash configurada na carga da página:', activeAccountCode);
+        console.log('[Efí SDK] Script carregado e conta configurada!');
         setIsSdkReady(true);
         setEfiSdkStatus('loaded');
       } catch (e) {
         console.error('[Efí SDK] Erro ao chamar setAccount na carga:', e);
       }
+      return;
+    }
+
+    const scriptId = 'efi-payment-sdk';
+    let script = document.getElementById(scriptId) as HTMLScriptElement | null;
+
+    if (!script) {
+      setEfiSdkStatus('loading');
+      script = document.createElement('script');
+      script.id = scriptId;
+      script.src = 'https://api.gerencianet.com.br/v1/cdn';
+      script.type = 'text/javascript';
+      script.async = true;
+      script.onload = () => {
+        if (win.$gn) {
+          try {
+            win.$gn.setAccount(activeAccountCode);
+            console.log('[Efí SDK] Script carregado e conta configurada!');
+            setIsSdkReady(true);
+            setEfiSdkStatus('loaded');
+          } catch (e) {
+            console.error('[Efí SDK] Erro ao chamar setAccount no onload:', e);
+          }
+        }
+      };
+      script.onerror = () => {
+        console.error('[Efí SDK] Erro de rede/CORS ao carregar script do Efí Bank');
+        setIsSdkReady(false);
+        setEfiSdkStatus('failed');
+      };
+      document.head.appendChild(script);
     } else {
-      console.log('[Efí SDK] Objeto $gn não encontrado no window');
-      setIsSdkReady(false);
-      setEfiSdkStatus('idle');
+      const prevOnload = script.onload;
+      script.onload = (e) => {
+        if (prevOnload) (prevOnload as any)(e);
+        if (win.$gn) {
+          try {
+            win.$gn.setAccount(activeAccountCode);
+            console.log('[Efí SDK] Script carregado e conta configurada via script existente!');
+            setIsSdkReady(true);
+            setEfiSdkStatus('loaded');
+          } catch (err) {
+            console.error('[Efí SDK] Erro ao configurar setAccount no onload:', err);
+          }
+        }
+      };
     }
   }, [efiPublicConfig]);
 
@@ -251,7 +293,7 @@ export default function ClientDashboard({
       if (typeof win.$gn === 'undefined' && typeof win.EfiPay === 'undefined') {
         console.error('[Efí SDK] Objeto $gn não encontrado no window');
         if (!isSandbox) {
-          reject(new Error('[Efí SDK] Objeto $gn não encontrado no window'));
+          reject(new Error('Aguardando carregamento do módulo de pagamento. Abra o app fora do modo de simulação/iframe se o erro persistir.'));
         } else {
           resolve('token_simulado_desenvolvedor');
         }
