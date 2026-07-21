@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { User as UserType, ServiceOrder, ChatMessage, OSPriority } from '../types';
 import { getAvatarUrl } from '../utils';
+import { loadEfiSdk } from '../utils/efi';
 
 interface ZentexService {
   id: string;
@@ -204,97 +205,17 @@ export default function ClientDashboard({
   }, []);
 
   const loadEfiSdkScript = (): Promise<void> => {
-    return new Promise((resolve, reject) => {
-      const win = window as any;
-      // 1. Validação Real do Objeto Global:
-      // Só considere o SDK pronto se a verificação (typeof window.$gn !== 'undefined') for VERDADEIRA e possuir o ready
-      if (typeof win.$gn !== 'undefined' && typeof win.$gn.ready === 'function') {
-        resolve();
-        return;
-      }
-
-      const activeIsSandbox = efiPublicConfig 
-        ? efiPublicConfig.isSandbox 
-        : ((import.meta as any).env.VITE_EFI_SANDBOX === 'true' || (import.meta as any).env.VITE_EFI_SANDBOX === true);
-
-      const targetSrc = activeIsSandbox
-        ? 'https://sandbox.gerencianet.com.br/v1/cdn'
-        : 'https://api.gerencianet.com.br/v1/cdn';
-
-      const scriptId = 'efi-payment-sdk';
-      let script = document.getElementById(scriptId) as HTMLScriptElement | null;
-
-      if (script) {
-        if (script.src === targetSrc) {
-          if (typeof win.$gn !== 'undefined' && typeof win.$gn.ready === 'function') {
-            resolve();
-            return;
-          }
-          // Se já existe o script mas está carregando, acopla no onload existente
-          const prevOnload = script.onload;
-          script.onload = (e) => {
-            if (prevOnload) (prevOnload as any)(e);
-            if (win.$gn) {
-              const activeAccountCode = efiPublicConfig?.accountCode || ACCOUNT_HASH || '3931688641e8e06302526275df0fada3';
-              try {
-                win.$gn.setAccount(activeAccountCode);
-                console.log('[Efí SDK] Chave Account Hash configurada via onload acoplado:', activeAccountCode);
-              } catch (err) {
-                console.error('[Efí SDK] Erro ao configurar setAccount:', err);
-              }
-            }
-            setIsSdkReady(true);
-            setEfiSdkStatus('loaded');
-            resolve();
-          };
-          script.onerror = () => {
-            setIsSdkReady(false);
-            setEfiSdkStatus('failed');
-            reject(new Error('Falha ao baixar o script de segurança do Efí Bank'));
-          };
-          return;
-        } else {
-          script.remove();
-        }
-      }
-
-      setEfiSdkStatus('loading');
-      const newScript = document.createElement('script');
-      newScript.id = scriptId;
-      newScript.type = 'text/javascript';
-      newScript.src = targetSrc;
-      newScript.async = true;
-
-      // 2. Aguardar o Evento onload:
-      newScript.onload = () => {
-        console.log(`[Efí Bank] SDK de Pagamento (${activeIsSandbox ? 'Sandbox' : 'Produção'}) carregado com sucesso via loadEfiSdkScript!`);
-        
-        // Somente APÓS o evento onload disparar, execute a inicialização da conta:
-        if (win.$gn) {
-          const activeAccountCode = efiPublicConfig?.accountCode || ACCOUNT_HASH || '3931688641e8e06302526275df0fada3';
-          try {
-            win.$gn.setAccount(activeAccountCode);
-            console.log('[Efí SDK] Chave Account Hash configurada via setAccount:', activeAccountCode);
-          } catch (e) {
-            console.error('[Efí SDK] Erro ao chamar setAccount:', e);
-          }
-        }
-        
+    setEfiSdkStatus('loading');
+    return loadEfiSdk(ACCOUNT_HASH, efiPublicConfig)
+      .then(() => {
         setIsSdkReady(true);
         setEfiSdkStatus('loaded');
-        resolve();
-      };
-
-      newScript.onerror = (err) => {
-        console.error('[Efí Bank] Falha ao carregar o script do SDK da Efí:', err);
-        setEfiSdkStatus('failed');
+      })
+      .catch((err) => {
         setIsSdkReady(false);
-        reject(new Error('Falha ao baixar o script de segurança do Efí Bank'));
-      };
-
-      // Injeta no <head> como solicitado
-      document.head.appendChild(newScript);
-    });
+        setEfiSdkStatus('failed');
+        throw err;
+      });
   };
 
   useEffect(() => {
