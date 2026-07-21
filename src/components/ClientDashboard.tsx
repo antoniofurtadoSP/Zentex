@@ -229,18 +229,48 @@ export default function ClientDashboard({
       ? 'https://sandbox.gerencianet.com.br/v1/cdn'
       : 'https://api.gerencianet.com.br/v1/cdn';
 
-    let script = document.getElementById(scriptId) as HTMLScriptElement | null;
+    // Helper to initialize the AccountCode in window.$gn or window.EfiPay
+    const initializeAccount = () => {
+      const activeGn = (window as any).$gn || (window as any).EfiPay;
+      if (activeGn) {
+        if (typeof activeGn.setAccount === 'function') {
+          try {
+            activeGn.setAccount(activeAccountCode);
+            console.log('[Efí SDK] Chave Account Hash configurada via setAccount:', activeAccountCode);
+          } catch (e) {
+            console.error('[Efí SDK] Erro ao chamar setAccount:', e);
+          }
+        } else if (Array.isArray(activeGn)) {
+          // Clear any existing AccountCode to avoid duplication
+          const filtered = activeGn.filter((arr: any) => !(Array.isArray(arr) && arr[0] === 'AccountCode'));
+          filtered.push(['AccountCode', activeAccountCode]);
+          (window as any).$gn = filtered;
+          console.log('[Efí SDK] Chave Account Hash enfileirada no array $gn:', activeAccountCode);
+        }
+      } else {
+        // Create as array queue if neither exists yet
+        (window as any).$gn = [['AccountCode', activeAccountCode]];
+        console.log('[Efí SDK] Chave Account Hash enfileirada em novo array $gn:', activeAccountCode);
+      }
+    };
+
+    let script = (document.getElementById(scriptId) || 
+                  document.querySelector('script[src*="gerencianet.com.br/v1/cdn"]')) as HTMLScriptElement | null;
 
     if (script) {
+      if (!script.id) {
+        script.id = scriptId;
+      }
       if (script.src === targetSrc) {
-        // Correct script already injected, check if fully initialized
-        const gn = (window as any).$gn;
+        // Correct script already injected, run initialization and check readiness
+        initializeAccount();
+        const gn = (window as any).$gn || (window as any).EfiPay;
         if (gn && typeof gn.ready === 'function') {
           setEfiSdkStatus('loaded');
         } else {
           setEfiSdkStatus('loading');
           const checkInterval = setInterval(() => {
-            const currentGn = (window as any).$gn;
+            const currentGn = (window as any).$gn || (window as any).EfiPay;
             if (currentGn && typeof currentGn.ready === 'function') {
               setEfiSdkStatus('loaded');
               clearInterval(checkInterval);
@@ -259,9 +289,8 @@ export default function ClientDashboard({
 
     setEfiSdkStatus('loading');
     
-    // Clear and push AccountCode correctly before appending script
-    (window as any).$gn = [];
-    (window as any).$gn.push(['AccountCode', activeAccountCode]);
+    // Initialize before appending script
+    initializeAccount();
 
     const newScript = document.createElement('script');
     newScript.id = scriptId;
@@ -271,20 +300,21 @@ export default function ClientDashboard({
     
     newScript.onload = () => {
       console.log(`[Efí Bank] SDK de Pagamento (${activeIsSandbox ? 'Sandbox' : 'Produção'}) carregado com sucesso!`);
-      // Define a prontidão como 'loaded' imediatamente conforme solicitado
+      initializeAccount();
       setEfiSdkStatus('loaded');
       
       let attempts = 0;
       const poll = setInterval(() => {
         attempts++;
-        const activeGn = (window as any).$gn;
+        const activeGn = (window as any).$gn || (window as any).EfiPay;
         if (activeGn && typeof activeGn.ready === 'function') {
+          initializeAccount();
           clearInterval(poll);
-        } else if (attempts > 20) {
+        } else if (attempts > 30) {
           console.error('[Efí Bank] Falha de inicialização: objeto $gn.ready não disponível após carregar o script.');
           clearInterval(poll);
         }
-      }, 200);
+      }, 150);
     };
 
     newScript.onerror = (err) => {
@@ -319,69 +349,103 @@ export default function ClientDashboard({
         ? efiPublicConfig.isSandbox 
         : ((import.meta as any).env.VITE_EFI_SANDBOX === 'true' || (import.meta as any).env.VITE_EFI_SANDBOX === true);
 
-      // Configurar um timeout de 4 segundos para evitar que a promessa trave a interface caso o SDK da Efí não responda
-      const timeoutId = setTimeout(() => {
-        console.warn('[Efí SDK] Timeout na tokenização do cartão.');
-        if (!isSandbox) {
-          reject(new Error('Tempo limite esgotado ao tentar validar e criptografar os dados do cartão na Efí Bank.'));
-        } else {
-          resolve('token_simulado_desenvolvedor');
-        }
-      }, 4000);
+      // Async wrapper to wait for the library to be available and fully loaded
+      const waitForSdkAndTokenize = async () => {
+        let gn = (window as any).$gn || (window as any).EfiPay;
+        let attempts = 0;
 
-      const gn = (window as any).$gn;
-      if (!gn || typeof gn.ready !== 'function') {
-        clearTimeout(timeoutId);
-        if (!isSandbox) {
-          reject(new Error('window.$gn indisponível'));
-        } else {
-          resolve('token_simulado_desenvolvedor');
+        // Poll up to 35 times (3.5 seconds) to wait for SDK to be ready
+        while ((!gn || typeof gn.ready !== 'function') && attempts < 35) {
+          attempts++;
+          await new Promise((res) => setTimeout(res, 100));
+          gn = (window as any).$gn || (window as any).EfiPay;
         }
-        return;
-      }
 
-      try {
-        gn.ready((checkout: any) => {
-          try {
-            checkout.getPaymentToken({
-              brand: cardDetails.brand,
-              number: cardDetails.number,
-              cvv: cardDetails.cvv,
-              expiration_month: cardDetails.expirationMonth,
-              expiration_year: cardDetails.expirationYear
-            }, (error: any, response: any) => {
-              clearTimeout(timeoutId);
-              if (error) {
-                console.error('[Efí Bank SDK - Erro Crítico de Tokenização]', JSON.stringify(error, null, 2));
-                reject(new Error(error.error_description || error.message || `Erro da Efí: Code ${error.code} - ${error.error}`));
-              } else {
-                if (response && response.data && response.data.payment_token) {
-                  resolve(response.data.payment_token);
-                } else {
-                  console.error('[Efí Bank SDK - Resposta Inválida]', response);
-                  reject(new Error('Resposta inválida do SDK de tokenização da Efí Bank (campo payment_token ausente).'));
-                }
-              }
-            });
-          } catch (err: any) {
-            clearTimeout(timeoutId);
-            console.error('[Efí Bank SDK] Erro ao chamar getPaymentToken:', err);
-            if (!isSandbox) {
-              reject(new Error(err.message || 'Erro interno do SDK da Efí'));
-            } else {
-              resolve('token_simulado_desenvolvedor');
-            }
+        // Configurar um timeout de 4 segundos para evitar que a promessa trave a interface caso o SDK da Efí não responda
+        const timeoutId = setTimeout(() => {
+          console.warn('[Efí SDK] Timeout na tokenização do cartão.');
+          if (!isSandbox) {
+            reject(new Error('Tempo limite esgotado ao tentar validar e criptografar os dados do cartão na Efí Bank.'));
+          } else {
+            resolve('token_simulado_desenvolvedor');
           }
-        });
-      } catch (err: any) {
-        clearTimeout(timeoutId);
-        console.error('[Efí Bank SDK] Erro ao chamar gn.ready:', err);
-        if (!isSandbox) {
-          reject(new Error(err.message || 'Erro de inicialização do SDK da Efí'));
-        } else {
-          resolve('token_simulado_desenvolvedor');
+        }, 4000);
+
+        if (!gn || typeof gn.ready !== 'function') {
+          clearTimeout(timeoutId);
+          if (!isSandbox) {
+            reject(new Error('janela.$gn indisponível'));
+          } else {
+            resolve('token_simulado_desenvolvedor');
+          }
+          return;
         }
-      }
+
+        // Guarantee account initialization right before tokenizing
+        const envAccountHash = ((import.meta as any).env.VITE_EFI_ACCOUNT_HASH as string) || 
+                               ((import.meta as any).env.NEXT_PUBLIC_EFI_ACCOUNT_HASH as string);
+        const activeAccountCode = efiPublicConfig?.accountCode || 
+                                  envAccountHash || 
+                                  ((import.meta as any).env.VITE_EFI_ACCOUNT_CODE as string) || 
+                                  'ae970c6d3df39869502a5fb681283626';
+        
+        try {
+          if (typeof gn.setAccount === 'function') {
+            gn.setAccount(activeAccountCode);
+          } else if (Array.isArray(gn)) {
+            const filtered = gn.filter((arr: any) => !(Array.isArray(arr) && arr[0] === 'AccountCode'));
+            filtered.push(['AccountCode', activeAccountCode]);
+            (window as any).$gn = filtered;
+          }
+        } catch (err) {
+          console.error('[Efí SDK] Erro ao re-garantir setAccount no getEfiCardToken:', err);
+        }
+
+        try {
+          gn.ready((checkout: any) => {
+            try {
+              checkout.getPaymentToken({
+                brand: cardDetails.brand,
+                number: cardDetails.number,
+                cvv: cardDetails.cvv,
+                expiration_month: cardDetails.expirationMonth,
+                expiration_year: cardDetails.expirationYear
+              }, (error: any, response: any) => {
+                clearTimeout(timeoutId);
+                if (error) {
+                  console.error('[Efí Bank SDK - Erro Crítico de Tokenização]', JSON.stringify(error, null, 2));
+                  reject(new Error(error.error_description || error.message || `Erro da Efí: Code ${error.code} - ${error.error}`));
+                } else {
+                  if (response && response.data && response.data.payment_token) {
+                    resolve(response.data.payment_token);
+                  } else {
+                    console.error('[Efí Bank SDK - Resposta Inválida]', response);
+                    reject(new Error('Resposta inválida do SDK de tokenização da Efí Bank (campo payment_token ausente).'));
+                  }
+                }
+              });
+            } catch (err: any) {
+              clearTimeout(timeoutId);
+              console.error('[Efí Bank SDK] Erro ao chamar getPaymentToken:', err);
+              if (!isSandbox) {
+                reject(new Error(err.message || 'Erro interno do SDK da Efí'));
+              } else {
+                resolve('token_simulado_desenvolvedor');
+              }
+            }
+          });
+        } catch (err: any) {
+          clearTimeout(timeoutId);
+          console.error('[Efí Bank SDK] Erro ao chamar gn.ready:', err);
+          if (!isSandbox) {
+            reject(new Error(err.message || 'Erro de inicialização do SDK da Efí'));
+          } else {
+            resolve('token_simulado_desenvolvedor');
+          }
+        }
+      };
+
+      waitForSdkAndTokenize();
     });
   };
 
