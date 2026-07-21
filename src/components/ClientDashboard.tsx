@@ -142,6 +142,13 @@ export default function ClientDashboard({
   onSendMessage,
   onRefreshData
 }: ClientDashboardProps) {
+  // Configuração e Fallback da Account Hash conforme solicitado
+  const EFI_ENV_ACCOUNT_HASH = ((import.meta as any).env?.VITE_EFI_ACCOUNT_HASH as string) || 
+                               ((import.meta as any).env?.VITE_EFI_ACCOUNT_CODE as string) ||
+                               ((import.meta as any).env?.NEXT_PUBLIC_EFI_ACCOUNT_HASH as string);
+
+  const EFI_ACCOUNT_HASH = EFI_ENV_ACCOUNT_HASH || "3931688641e8e06302526275df0fada3";
+
   const [activeTab, setActiveTab] = useState<'request' | 'my-orders' | 'chat' | 'profile'>('request');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -200,19 +207,12 @@ export default function ClientDashboard({
   }, []);
 
   useEffect(() => {
-    // Check if Account Hash environment variables are defined
-    const envAccountHash = ((import.meta as any).env.VITE_EFI_ACCOUNT_HASH as string) || 
-                           ((import.meta as any).env.NEXT_PUBLIC_EFI_ACCOUNT_HASH as string);
-    
-    if (!envAccountHash) {
+    if (!EFI_ENV_ACCOUNT_HASH) {
       console.error("[Efí SDK] Chave Account Hash ausente");
     }
 
     // Determine the active account code and environment, falling back to Vite environment variables if REST API isn't ready
-    const activeAccountCode = efiPublicConfig?.accountCode || 
-                              envAccountHash || 
-                              ((import.meta as any).env.VITE_EFI_ACCOUNT_CODE as string) || 
-                              'ae970c6d3df39869502a5fb681283626'; // Fallback dummy to allow initialization
+    const activeAccountCode = efiPublicConfig?.accountCode || EFI_ACCOUNT_HASH;
     const activeIsSandbox = efiPublicConfig 
       ? efiPublicConfig.isSandbox 
       : ((import.meta as any).env.VITE_EFI_SANDBOX === 'true' || (import.meta as any).env.VITE_EFI_SANDBOX === true);
@@ -382,20 +382,17 @@ export default function ClientDashboard({
         }
 
         // Guarantee account initialization right before tokenizing
-        const envAccountHash = ((import.meta as any).env.VITE_EFI_ACCOUNT_HASH as string) || 
-                               ((import.meta as any).env.NEXT_PUBLIC_EFI_ACCOUNT_HASH as string);
-        const activeAccountCode = efiPublicConfig?.accountCode || 
-                                  envAccountHash || 
-                                  ((import.meta as any).env.VITE_EFI_ACCOUNT_CODE as string) || 
-                                  'ae970c6d3df39869502a5fb681283626';
+        const activeAccountCode = efiPublicConfig?.accountCode || EFI_ACCOUNT_HASH;
         
         try {
           if (typeof gn.setAccount === 'function') {
             gn.setAccount(activeAccountCode);
+            console.log('[Efí SDK - Tokenização] setAccount chamado com:', activeAccountCode);
           } else if (Array.isArray(gn)) {
             const filtered = gn.filter((arr: any) => !(Array.isArray(arr) && arr[0] === 'AccountCode'));
             filtered.push(['AccountCode', activeAccountCode]);
             (window as any).$gn = filtered;
+            console.log('[Efí SDK - Tokenização] AccountCode enfileirado no array com:', activeAccountCode);
           }
         } catch (err) {
           console.error('[Efí SDK] Erro ao re-garantir setAccount no getEfiCardToken:', err);
