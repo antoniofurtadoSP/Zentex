@@ -143,10 +143,7 @@ export default function ClientDashboard({
   onRefreshData
 }: ClientDashboardProps) {
   // Configuração e Fallback da Account Hash conforme solicitado
-  const ACCOUNT_HASH = ((import.meta as any).env?.VITE_EFI_ACCOUNT_HASH as string) || 
-                       ((import.meta as any).env?.VITE_EFI_ACCOUNT_CODE as string) || 
-                       ((import.meta as any).env?.NEXT_PUBLIC_EFI_ACCOUNT_HASH as string) ||
-                       "3931688641e8e06302526275df0fada3";
+  const ACCOUNT_HASH = ((import.meta as any).env?.VITE_EFI_ACCOUNT_HASH as string) || "3931688641e8e06302526275df0fada3";
 
   const [activeTab, setActiveTab] = useState<'request' | 'my-orders' | 'chat' | 'profile'>('request');
   const [title, setTitle] = useState('');
@@ -197,6 +194,7 @@ export default function ClientDashboard({
     pixKey: string;
   } | null>(null);
   const [efiSdkStatus, setEfiSdkStatus] = useState<'idle' | 'loading' | 'loaded' | 'failed' | 'missing_config'>('idle');
+  const [isSdkReady, setIsSdkReady] = useState(false);
 
   useEffect(() => {
     fetch('/api/payment/efi/public-config')
@@ -206,25 +204,11 @@ export default function ClientDashboard({
   }, []);
 
   useEffect(() => {
-    // 1. Tratamento Imediato de Erro na Inicialização
-    if (!ACCOUNT_HASH || ACCOUNT_HASH.trim() === "" || ACCOUNT_HASH === "SUA_ACCOUNT_HASH_AQUI") {
-      alert("Erro: Chave Account Hash não configurada");
-      setEfiSdkStatus('missing_config');
-      return;
-    }
-
     // Determine the active account code and environment, falling back to Vite environment variables if REST API isn't ready
     const activeAccountCode = efiPublicConfig?.accountCode || ACCOUNT_HASH;
     const activeIsSandbox = efiPublicConfig 
       ? efiPublicConfig.isSandbox 
       : ((import.meta as any).env.VITE_EFI_SANDBOX === 'true' || (import.meta as any).env.VITE_EFI_SANDBOX === true);
-
-    const isCardConfigured = efiPublicConfig?.hasCardConfig || efiPublicConfig?.hasConfig || !!activeAccountCode;
-
-    if (!isCardConfigured || !activeAccountCode) {
-      setEfiSdkStatus('missing_config');
-      return;
-    }
 
     const scriptId = 'efi-payment-sdk';
     const targetSrc = activeIsSandbox
@@ -240,6 +224,8 @@ export default function ClientDashboard({
             activeGn.setAccount(activeAccountCode);
             console.log('[Efí SDK] Chave Account Hash configurada via setAccount:', activeAccountCode);
             console.log('[Efí SDK] Inicializado com sucesso!');
+            setIsSdkReady(true);
+            setEfiSdkStatus('loaded');
           } catch (e) {
             console.error('[Efí SDK] Erro ao chamar setAccount:', e);
           }
@@ -250,12 +236,16 @@ export default function ClientDashboard({
           (window as any).$gn = filtered;
           console.log('[Efí SDK] Chave Account Hash enfileirada no array $gn:', activeAccountCode);
           console.log('[Efí SDK] Inicializado com sucesso!');
+          setIsSdkReady(true);
+          setEfiSdkStatus('loaded');
         }
       } else {
         // Create as array queue if neither exists yet
         (window as any).$gn = [['AccountCode', activeAccountCode]];
         console.log('[Efí SDK] Chave Account Hash enfileirada em novo array $gn:', activeAccountCode);
         console.log('[Efí SDK] Inicializado com sucesso!');
+        setIsSdkReady(true);
+        setEfiSdkStatus('loaded');
       }
     };
 
@@ -269,6 +259,7 @@ export default function ClientDashboard({
       if (script.src === targetSrc) {
         // Correct script already injected, run initialization and immediately set ready state
         initializeAccount();
+        setIsSdkReady(true);
         setEfiSdkStatus('loaded');
         return;
       } else {
@@ -293,6 +284,7 @@ export default function ClientDashboard({
     newScript.onload = () => {
       console.log(`[Efí Bank] SDK de Pagamento (${activeIsSandbox ? 'Sandbox' : 'Produção'}) carregado com sucesso!`);
       initializeAccount();
+      setIsSdkReady(true);
       setEfiSdkStatus('loaded');
     };
 
@@ -633,9 +625,9 @@ export default function ClientDashboard({
     setCheckoutLoading(true);
     setCheckoutError(null);
 
-    // If SDK is loading, provide a helpful non-disabling message
-    if (efiSdkStatus === 'loading') {
-      setCheckoutError('O módulo de segurança da Efí Bank ainda está inicializando no navegador. Por favor, aguarde de 3 a 5 segundos e clique novamente.');
+    // 1. Tratamento Imediato de Erro na Inicialização
+    if (!ACCOUNT_HASH || ACCOUNT_HASH.trim() === "" || ACCOUNT_HASH === "SUA_ACCOUNT_HASH_AQUI") {
+      alert("Erro: Chave Account Hash não configurada");
       setCheckoutLoading(false);
       return;
     }
@@ -1002,9 +994,9 @@ export default function ClientDashboard({
           return;
         }
 
-        // If SDK is loading, provide a helpful non-disabling message
-        if (efiSdkStatus === 'loading') {
-          alert('O módulo de segurança da Efí Bank ainda está inicializando no navegador. Por favor, aguarde de 3 a 5 segundos e clique novamente.');
+        // 1. Tratamento Imediato de Erro na Inicialização
+        if (!ACCOUNT_HASH || ACCOUNT_HASH.trim() === "" || ACCOUNT_HASH === "SUA_ACCOUNT_HASH_AQUI") {
+          alert("Erro: Chave Account Hash não configurada");
           setIsPaying(false);
           setSubmitting(false);
           return;
