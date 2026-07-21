@@ -7,10 +7,9 @@ import ZentexLogo from './components/ZentexLogo';
 import ZentexAuth from './components/ZentexAuth';
 import { getAvatarUrl } from './utils';
 import { 
-  Shield, Hammer, Users, RefreshCw, AlertCircle, Sparkles, Navigation, 
-  Accessibility, Volume2, VolumeX, Keyboard, Sun, Moon, Eye, Contrast, 
-  Check, X, Plus, Minus, Info, LogOut, Lock, Key, Mail, Phone, UserCheck,
-  User as UserIcon
+  Shield, Hammer, Users, RefreshCw, AlertCircle, Navigation, 
+  Accessibility, Keyboard, Sun, Moon, Eye, Contrast, 
+  Check, X, Plus, Minus, Info, LogOut, Lock, Key, Mail, Phone
 } from 'lucide-react';
 
 export default function App() {
@@ -31,132 +30,16 @@ export default function App() {
     (window as any).alert = (message: any) => {
       const msgStr = typeof message === 'object' ? JSON.stringify(message) : String(message);
       setGlobalAlertMessage(msgStr);
-      // Voice feedback if enabled
-      if ((window as any).zentexSpeakForce) {
-        (window as any).zentexSpeakForce(msgStr);
-      }
     };
+    (window as any).zentexSpeak = () => {};
+    (window as any).zentexSpeakForce = () => {};
+    (window as any).isVoiceEnabled = () => false;
   }, []);
 
   // Accessibility States
   const [fontSize, setFontSize] = useState<string>(() => localStorage.getItem('zentex-font-size') || '100%');
   const [theme, setTheme] = useState<'light' | 'dark' | 'contrast'>(() => (localStorage.getItem('zentex-theme') as any) || 'light');
-  const [voiceEnabled, setVoiceEnabled] = useState<boolean>(() => localStorage.getItem('zentex-voice') === 'true');
-  const [voiceProfile, setVoiceProfile] = useState<'female-friendly' | 'female-formal' | 'male-friendly' | 'male-formal'>(() => {
-    return (localStorage.getItem('zentex-voice-profile') as any) || 'female-friendly';
-  });
   const [showAccessibilityModal, setShowAccessibilityModal] = useState<boolean>(false);
-
-  // Helper to select the best, most humanized pt-BR voice available in the browser based on profile
-  const getBestPtBrVoice = useCallback((profile: 'female-friendly' | 'female-formal' | 'male-friendly' | 'male-formal') => {
-    if (!window.speechSynthesis) return null;
-    const voices = window.speechSynthesis.getVoices();
-    const ptBrVoices = voices.filter(voice => {
-      const l = voice.lang.toLowerCase();
-      return l === 'pt-br' || l.startsWith('pt-') || l.includes('pt');
-    });
-
-    if (ptBrVoices.length === 0) return null;
-
-    // We categorize voices into likely female vs male based on known names in Portuguese and general defaults
-    const isFemaleName = (nameStr: string) => {
-      const n = nameStr.toLowerCase();
-      return n.includes('luciana') || n.includes('maria') || n.includes('heloisa') || n.includes('francisca') || n.includes('joana') || n.includes('victoria') || n.includes('siri') || n.includes('zira') || n.includes('google') || (!n.includes('daniel') && !n.includes('antonio') && !n.includes('felipe') && !n.includes('ricardo') && !n.includes('junior') && !n.includes('thiago') && !n.includes('carlos'));
-    };
-
-    const isMaleName = (nameStr: string) => {
-      const n = nameStr.toLowerCase();
-      return n.includes('daniel') || n.includes('antonio') || n.includes('felipe') || n.includes('ricardo') || n.includes('leonardo') || n.includes('junior') || n.includes('david') || n.includes('thiago') || n.includes('carlos');
-    };
-
-    // Prioritized list of keywords for high-quality, humanized voices in Portuguese:
-    // 1. Natural / Online voices (e.g. Edge Natural, Microsoft Online) which sound amazingly human
-    // 2. Google voices (usually very smooth and natural)
-    // 3. Apple/Safari high quality voices (e.g. Luciana, Joana, Siri, Premium)
-    // 4. Default Brazil voice (pt-BR)
-    const sorted = [...ptBrVoices].sort((a, b) => {
-      const aName = a.name.toLowerCase();
-      const bName = b.name.toLowerCase();
-      
-      const getScore = (name: string, voiceObj: any) => {
-        let score = 0;
-
-        // Match gender preference
-        if (profile.startsWith('female')) {
-          if (isFemaleName(name)) score += 50;
-          if (isMaleName(name)) score -= 40;
-        } else if (profile.startsWith('male')) {
-          if (isMaleName(name)) score += 50;
-          if (isFemaleName(name)) score -= 40;
-        }
-        
-        // High priority for Natural/Online neural voices which are hyper-realistic
-        if (name.includes('natural') || name.includes('online')) score += 100;
-        // High priority for Google voices
-        if (name.includes('google')) score += 50;
-        // Priority for premium, high quality, or Siri voices
-        if (name.includes('premium') || name.includes('high') || name.includes('siri')) score += 30;
-        // Prefer Brazilian Portuguese (pt-BR) over European Portuguese (pt-PT)
-        if (voiceObj.lang.toLowerCase() === 'pt-br') score += 20;
-
-        return score;
-      };
-
-      return getScore(bName, b) - getScore(aName, a);
-    });
-
-    return sorted[0];
-  }, []);
-
-  // Helper function to synthesize text-to-speech with natural cadence
-  const speakText = useCallback((text: string, forceProfile?: 'female-friendly' | 'female-formal' | 'male-friendly' | 'male-formal') => {
-    if (!window.speechSynthesis) return;
-    try {
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(text);
-      
-      const activeProfile = forceProfile || voiceProfile;
-      // Select best humanized voice
-      const bestVoice = getBestPtBrVoice(activeProfile);
-      if (bestVoice) {
-        utterance.voice = bestVoice;
-        console.log(`[Zentex Voz] Usando voz humanizada selecionada: ${bestVoice.name} (${bestVoice.lang}) para o perfil ${activeProfile}`);
-      } else {
-        utterance.lang = 'pt-BR';
-        console.log('[Zentex Voz] Nenhuma voz pt-BR correspondente encontrada, usando padrão de idioma pt-BR.');
-      }
-      
-      // Settings for human-like cadence (cadência humanizada)
-      if (activeProfile.endsWith('friendly')) {
-        utterance.rate = 0.98; // Conversational, slightly warmer
-        utterance.pitch = activeProfile.startsWith('female') ? 1.08 : 1.04; // Slightly warmer/enthusiastic tone
-      } else {
-        utterance.rate = 0.93; // More deliberate, clear, professional pace
-        utterance.pitch = activeProfile.startsWith('female') ? 0.97 : 0.93; // Calm, serious, authoritative tone
-      }
-      
-      utterance.volume = 1.0;
-
-      window.speechSynthesis.speak(utterance);
-    } catch (e) {
-      console.error('Speech synthesis error:', e);
-    }
-  }, [getBestPtBrVoice, voiceProfile]);
-
-  // Expose speak utility to global window context for subcomponents to trigger
-  useEffect(() => {
-    (window as any).zentexSpeak = (text: string) => {
-      if (voiceEnabled || localStorage.getItem('zentex-voice') === 'true') {
-        speakText(text);
-      }
-    };
-    (window as any).zentexSpeakForce = (text: string) => {
-      speakText(text);
-    };
-    (window as any).isVoiceEnabled = () => {
-      return voiceEnabled;
-    };
-  }, [voiceEnabled, speakText]);
 
   // Sync state modifications with localStorage and HTML settings
   useEffect(() => {
@@ -174,10 +57,6 @@ export default function App() {
       htmlEl.classList.add('contrast-theme');
     }
   }, [theme]);
-
-  useEffect(() => {
-    localStorage.setItem('zentex-voice', String(voiceEnabled));
-  }, [voiceEnabled]);
 
   // Client-side SVG-to-PNG fallback compiler for maximum reliability of PWA and mobile home-screen icons
   useEffect(() => {
@@ -382,37 +261,23 @@ export default function App() {
       if (e.altKey && e.key.toLowerCase() === 'a') {
         e.preventDefault();
         setShowAccessibilityModal(prev => !prev);
-        speakText('Menu de acessibilidade alternado');
-      }
-      // Alt + V: Toggle Voice Feedback
-      if (e.altKey && e.key.toLowerCase() === 'v') {
-        e.preventDefault();
-        setVoiceEnabled(prev => {
-          const next = !prev;
-          speakText(next ? 'Assistente de voz Zentex ativado' : 'Assistente de voz Zentex desativado');
-          return next;
-        });
       }
       // Alt + T: Toggle Theme (Light -> Dark -> Contrast)
       if (e.altKey && e.key.toLowerCase() === 't') {
         e.preventDefault();
         setTheme(prev => {
-          const next = prev === 'light' ? 'dark' : prev === 'dark' ? 'contrast' : 'light';
-          const name = next === 'light' ? 'Claro' : next === 'dark' ? 'Escuro' : 'Alto Contraste';
-          speakText(`Visual alterado para ${name}`);
-          return next;
+          return prev === 'light' ? 'dark' : prev === 'dark' ? 'contrast' : 'light';
         });
       }
       // Alt + S: Sync operational data
       if (e.altKey && e.key.toLowerCase() === 's') {
         e.preventDefault();
         loadData();
-        speakText('Banco de dados de campo sincronizado');
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [loadData, speakText]);
+  }, [loadData]);
 
   // Actions
   const handleCreateOrder = async (orderData: Partial<ServiceOrder>): Promise<ServiceOrder | null> => {
@@ -808,19 +673,10 @@ export default function App() {
 
       {/* PERSISTENT FLOATING ACCESSIBILITY CONTROLLERS */}
       <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-2.5 items-end">
-        {/* Voice active quick-indicator */}
-        {voiceEnabled && (
-          <div className="bg-emerald-600 text-white text-[9px] font-black uppercase px-2.5 py-1 rounded-full shadow-lg flex items-center gap-1.5 animate-bounce">
-            <Volume2 className="w-3 h-3" />
-            <span>Voz Zentex Ativa</span>
-          </div>
-        )}
-
         {/* Floating Toggle Button */}
         <button
           onClick={() => {
             setShowAccessibilityModal(true);
-            speakText('Painel de acessibilidade aberto');
           }}
           className="flex items-center gap-2 px-4 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs rounded-full shadow-xl transition-all hover:scale-105 active:scale-95 border border-emerald-400/20"
           aria-label="Configurações de acessibilidade"
@@ -851,7 +707,6 @@ export default function App() {
               <button
                 onClick={() => {
                   setShowAccessibilityModal(false);
-                  speakText('Painel de acessibilidade fechado');
                 }}
                 className="p-1.5 hover:bg-slate-50 text-slate-400 hover:text-slate-700 rounded-lg border border-slate-200 transition-colors cursor-pointer"
                 aria-label="Fechar painel"
@@ -883,7 +738,6 @@ export default function App() {
                       key={sz.val}
                       onClick={() => {
                         setFontSize(sz.val);
-                        speakText(`Tamanho do texto ajustado para ${sz.label}`);
                       }}
                       className={`flex-1 text-[10px] font-bold py-2 rounded-xl transition-all border cursor-pointer ${
                         fontSize === sz.val
@@ -919,7 +773,6 @@ export default function App() {
                         key={tm.val}
                         onClick={() => {
                           setTheme(tm.val as any);
-                          speakText(`Tema alterado para ${tm.label}`);
                         }}
                         className={`w-full flex items-center justify-between text-[10px] font-bold px-3 py-2 rounded-xl transition-all border cursor-pointer ${
                           theme === tm.val
@@ -938,126 +791,7 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Box 3: Text-to-Speech (Zentex Voz) */}
-              <div className="p-4 bg-slate-50 border border-slate-150 rounded-2xl col-span-1 md:col-span-2 flex flex-col gap-4">
-                <div className="flex flex-col md:flex-row items-center justify-between gap-4 w-full">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 text-slate-700 mb-1.5">
-                      <Volume2 className="w-4 h-4 text-emerald-600" />
-                      <span className="text-xs font-bold">Assistente de Voz (Zentex Voz)</span>
-                    </div>
-                    <p className="text-[10px] text-slate-400">
-                      Ativa a narração integrada. Se ativado, clique nos pequenos ícones de alto-falante para escutar ordens de serviço, conversas de chat ou instruções operacionais sendo faladas em português.
-                    </p>
-                  </div>
-
-                  <button
-                    onClick={() => {
-                      const newVal = !voiceEnabled;
-                      setVoiceEnabled(newVal);
-                      speakText(newVal ? 'Leitor de voz Zentex ativado' : 'Leitor de voz Zentex desativado');
-                    }}
-                    className={`px-4 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 border transition-all cursor-pointer ${
-                      voiceEnabled
-                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
-                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
-                    }`}
-                  >
-                    {voiceEnabled ? (
-                      <>
-                        <Volume2 className="w-4 h-4 animate-pulse" />
-                        <span>Ativado (Voz Ligada)</span>
-                      </>
-                    ) : (
-                      <>
-                        <VolumeX className="w-4 h-4" />
-                        <span>Desativado</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-
-                {voiceEnabled && (
-                  <div className="mt-2.5 border-t border-slate-200/60 pt-3.5 w-full text-left">
-                    <div className="flex items-center gap-1.5 text-slate-700 mb-2">
-                      <Sparkles className="w-3.5 h-3.5 text-emerald-600 animate-pulse" />
-                      <span className="text-[11px] font-bold text-slate-800">Selecione o Perfil da Voz Humana</span>
-                    </div>
-                    <p className="text-[9.5px] text-slate-400 mb-3 leading-relaxed">
-                      Escolha o perfil de voz e entonação que mais se adapta ao ambiente de trabalho da sua equipe. Clique para selecionar e ouvir uma demonstração imediata.
-                    </p>
-                    
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                      {[
-                        { id: 'female-friendly', name: 'Ana (Feminina Amigável)', desc: 'Tom caloroso, acolhedor e natural para interações diárias.', icon: UserIcon, badge: 'Conversacional' },
-                        { id: 'female-formal', name: 'Sofia (Feminina Formal)', desc: 'Tom profissional, claro e objetivo para alertas críticos.', icon: UserCheck, badge: 'Profissional' },
-                        { id: 'male-friendly', name: 'Thiago (Masculina Amigável)', desc: 'Tom calmo, amigável e descontraído para a rotina.', icon: UserIcon, badge: 'Conversacional' },
-                        { id: 'male-formal', name: 'Carlos (Masculina Formal)', desc: 'Tom firme, corporativo e preciso para instruções.', icon: UserCheck, badge: 'Profissional' },
-                      ].map((p) => {
-                        const Icon = p.icon;
-                        const isSelected = voiceProfile === p.id;
-                        return (
-                          <button
-                            key={p.id}
-                            onClick={() => {
-                              setVoiceProfile(p.id as any);
-                              localStorage.setItem('zentex-voice-profile', p.id);
-                              // Speak a friendly preview with the newly selected profile
-                              const demoTexts: Record<string, string> = {
-                                'female-friendly': 'Olá! Eu sou a Ana. Este é o meu tom amigável e caloroso para o Zentex.',
-                                'female-formal': 'Atenção. Eu sou a Sofia. Este é o meu tom formal e de alerta para as operações.',
-                                'male-friendly': 'E aí, tudo bem? Eu sou o Thiago. Este é o meu tom de voz calmo e conversacional para o campo.',
-                                'male-formal': 'Olá. Eu sou o Carlos. Este é o meu tom profissional e objetivo para instruções do Zentex.'
-                              };
-                              speakText(demoTexts[p.id], p.id as any);
-                            }}
-                            className={`p-3 rounded-xl border text-left transition-all duration-150 cursor-pointer relative group ${
-                              isSelected 
-                                ? 'bg-emerald-50/70 border-emerald-500 shadow-sm ring-1 ring-emerald-500/20' 
-                                : 'bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50/50'
-                            }`}
-                          >
-                            <div className="flex items-start justify-between gap-1.5">
-                              <div className="flex items-center gap-1.5">
-                                <div className={`p-1.5 rounded-lg border ${
-                                  isSelected 
-                                    ? 'bg-emerald-600 border-emerald-600 text-white' 
-                                    : 'bg-slate-100 border-slate-200 text-slate-500 group-hover:text-slate-700'
-                                }`}>
-                                  <Icon className="w-3.5 h-3.5" />
-                                </div>
-                                <div>
-                                  <h4 className={`text-[10px] font-black leading-none ${isSelected ? 'text-emerald-900' : 'text-slate-800'}`}>
-                                    {p.name}
-                                  </h4>
-                                  <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded mt-1 inline-block ${
-                                    p.badge === 'Conversacional' 
-                                      ? 'bg-amber-100 text-amber-800' 
-                                      : 'bg-indigo-100 text-indigo-800'
-                                  }`}>
-                                    {p.badge}
-                                  </span>
-                                </div>
-                              </div>
-                              {isSelected && (
-                                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping absolute top-3 right-3" />
-                              )}
-                              {isSelected && (
-                                <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                              )}
-                            </div>
-                            <p className="text-[8.5px] text-slate-400 mt-2 leading-relaxed">
-                              {p.desc}
-                            </p>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Box 4: Keyboard Navigation Guides */}
+              {/* Box 3: Keyboard Navigation Guides */}
               <div className="p-4 bg-slate-50 border border-slate-150 rounded-2xl col-span-1 md:col-span-2">
                 <div className="flex items-center gap-2 text-slate-700 mb-2">
                   <Keyboard className="w-4 h-4 text-emerald-600" />
@@ -1067,7 +801,6 @@ export default function App() {
                   {[
                     { key: 'Alt + A', desc: 'Abrir/fechar este painel de acessibilidade' },
                     { key: 'Alt + T', desc: 'Alternar tema (Claro / Escuro / Alto Contraste)' },
-                    { key: 'Alt + V', desc: 'Ativar / desativar assistente de voz' },
                     { key: 'Alt + S', desc: 'Sincronizar base operacional (Gps & Satélite)' }
                   ].map((sh, idx) => (
                     <div key={idx} className="bg-white border border-slate-150 p-2.5 rounded-xl flex flex-col justify-between">

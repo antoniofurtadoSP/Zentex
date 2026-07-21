@@ -4,7 +4,7 @@ import ZentexChat from './ZentexChat';
 import ZentexMap from './ZentexMap';
 import { 
   Clock, MapPin, ClipboardList, Play, Pause, CheckSquare, MessageSquare, 
-  UserCheck, AlertTriangle, FileSignature, RefreshCw, Send, CheckCircle, Volume2,
+  UserCheck, AlertTriangle, FileSignature, RefreshCw, Send, CheckCircle,
   Navigation
 } from 'lucide-react';
 
@@ -370,19 +370,6 @@ export default function EmployeeDashboard({
                       <span className="text-[10px] font-mono text-slate-400 font-bold">{selectedOS.id}</span>
                       <h3 className="text-sm font-bold text-slate-900 mt-1">{selectedOS.title}</h3>
                     </div>
-                    <button
-                      onClick={() => {
-                        const text = `Ordem de serviço ${selectedOS.id}. Título: ${selectedOS.title}. Instruções: ${selectedOS.description || 'Sem instruções adicionais'}. Cliente: ${selectedOS.clientName}. Endereço: ${selectedOS.clientAddress}`;
-                        if ((window as any).zentexSpeakForce) {
-                          (window as any).zentexSpeakForce(text);
-                        }
-                      }}
-                      className="flex items-center gap-1.5 text-[10px] bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold px-2.5 py-1.5 rounded-xl border border-emerald-100 cursor-pointer shadow-sm shrink-0"
-                      title="Ouvir em voz alta"
-                    >
-                      <Volume2 className="w-3.5 h-3.5" />
-                      <span>Ouvir OS</span>
-                    </button>
                   </div>
 
                   <div className="space-y-4 border-t border-slate-100 pt-4 text-xs">

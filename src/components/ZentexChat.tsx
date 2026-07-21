@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { User, ChatMessage } from '../types';
 import { getAvatarUrl } from '../utils';
-import { Send, Hash, MessageSquare, Shield, Clock, Users, ArrowRightLeft, Volume2, ArrowDown } from 'lucide-react';
+import { Send, Hash, MessageSquare, Shield, Clock, Users, ArrowRightLeft, ArrowDown } from 'lucide-react';
 
 interface ZentexChatProps {
   currentUser: User;
@@ -328,24 +328,7 @@ export default function ZentexChat({ currentUser, users, messages, onSendMessage
                           ? 'bg-emerald-600 text-white font-medium rounded-tr-none' 
                           : 'bg-white border border-slate-200 text-slate-800 rounded-tl-none'
                       }`}>
-                        <div className="flex justify-between gap-4 items-start">
-                          <p className="flex-1 whitespace-pre-wrap">{msg.text}</p>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const speechText = `${msg.senderName} disse: ${msg.text}`;
-                              if ((window as any).zentexSpeakForce) {
-                                (window as any).zentexSpeakForce(speechText);
-                              }
-                            }}
-                            className={`p-1 rounded hover:bg-black/10 transition-colors shrink-0 cursor-pointer ${
-                              isMe ? 'text-white/70 hover:text-white' : 'text-slate-400 hover:text-slate-700'
-                            }`}
-                            title="Narrar mensagem"
-                          >
-                            <Volume2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
+                        <p className="whitespace-pre-wrap">{msg.text}</p>
                         
                         {/* Timestamp */}
                         <span className={`block text-[9px] mt-1.5 text-right ${

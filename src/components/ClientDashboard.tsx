@@ -265,6 +265,53 @@ export default function ClientDashboard({
     }
   }, [efiPublicConfig]);
 
+  const loadEfiSdk = (): Promise<any> => {
+    return new Promise((resolve, reject) => {
+      const win = window as any;
+      const activeAccountCode = efiPublicConfig?.accountCode || ACCOUNT_HASH || '3931688641e8e06302526275df0fada3';
+
+      if (win.$gn && (typeof win.$gn.payData === 'function' || typeof win.$gn.ready === 'function')) {
+        try {
+          win.$gn.setAccount(activeAccountCode);
+        } catch (e) {
+          console.error('[Efí SDK] Erro ao configurar setAccount:', e);
+        }
+        return resolve(win.$gn);
+      }
+
+      let script = document.getElementById('efi-sdk-script') as HTMLScriptElement | null;
+      if (!script) {
+        script = document.createElement('script');
+        script.id = 'efi-sdk-script';
+        script.src = 'https://api.gerencianet.com.br/v1/cdn';
+        script.type = 'text/javascript';
+        script.async = true;
+        document.head.appendChild(script);
+      }
+
+      let attempts = 0;
+      const interval = setInterval(() => {
+        attempts++;
+        if (win.$gn) {
+          clearInterval(interval);
+          try {
+            win.$gn.setAccount(activeAccountCode);
+            console.log('[Efí SDK] Auto-Loader: Script carregado e conta configurada!');
+            setIsSdkReady(true);
+            setEfiSdkStatus('loaded');
+          } catch (e) {
+            console.error('[Efí SDK] Auto-Loader: Erro ao configurar setAccount:', e);
+          }
+          resolve(win.$gn);
+        } else if (attempts > 20) { // 6 segundos de timeout
+          clearInterval(interval);
+          setEfiSdkStatus('failed');
+          reject(new Error('Não foi possível carregar o módulo de segurança da Efí Bank a tempo.'));
+        }
+      }, 300);
+    });
+  };
+
   const detectCardBrand = (number: string): string => {
     const clean = number.replace(/\D/g, '');
     if (/^4/.test(clean)) return 'visa';
@@ -277,30 +324,30 @@ export default function ClientDashboard({
     return 'visa';
   };
 
-  const getEfiCardToken = (cardDetails: {
+  const getEfiCardToken = async (cardDetails: {
     brand: string;
     number: string;
     cvv: string;
     expirationMonth: string;
     expirationYear: string;
   }): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const win = window as any;
-      const isSandbox = efiPublicConfig 
-        ? efiPublicConfig.isSandbox 
-        : ((import.meta as any).env.VITE_EFI_SANDBOX === 'true' || (import.meta as any).env.VITE_EFI_SANDBOX === true);
+    const isSandbox = efiPublicConfig 
+      ? efiPublicConfig.isSandbox 
+      : ((import.meta as any).env.VITE_EFI_SANDBOX === 'true' || (import.meta as any).env.VITE_EFI_SANDBOX === true);
 
-      if (typeof win.$gn === 'undefined' && typeof win.EfiPay === 'undefined') {
-        console.error('[Efí SDK] Objeto $gn não encontrado no window');
-        if (!isSandbox) {
-          reject(new Error('Aguardando carregamento do módulo de pagamento. Abra o app fora do modo de simulação/iframe se o erro persistir.'));
-        } else {
-          resolve('token_simulado_desenvolvedor');
-        }
-        return;
+    let efiSdk: any = null;
+    try {
+      efiSdk = await loadEfiSdk();
+    } catch (err: any) {
+      console.error('[Efí SDK] Falha no auto-loader do SDK:', err);
+      if (!isSandbox) {
+        throw new Error(err.message || 'Não foi possível carregar o módulo de segurança da Efí Bank a tempo.');
+      } else {
+        return 'token_simulado_desenvolvedor';
       }
+    }
 
-      const efiSdk = win.$gn || win.EfiPay;
+    return new Promise((resolve, reject) => {
       const activeAccountCode = efiPublicConfig?.accountCode || ACCOUNT_HASH || '3931688641e8e06302526275df0fada3';
 
       try {
@@ -317,44 +364,58 @@ export default function ClientDashboard({
         reject(new Error('Tempo limite excedido ao inicializar o cartão'));
       }, 8000);
 
-      try {
-        efiSdk.ready((checkout: any) => {
-          try {
-            checkout.getPaymentToken({
-              brand: cardDetails.brand,
-              number: cardDetails.number,
-              cvv: cardDetails.cvv,
-              expiration_month: cardDetails.expirationMonth,
-              expiration_year: cardDetails.expirationYear
-            }, (error: any, response: any) => {
-              clearTimeout(timeoutId);
-              if (error) {
-                console.error('[Efí Bank SDK - Erro Crítico de Tokenização]', JSON.stringify(error, null, 2));
-                reject(new Error(error.error_description || error.message || `Erro da Efí: Code ${error.code} - ${error.error}`));
-              } else {
-                if (response && response.data && response.data.payment_token) {
-                  resolve(response.data.payment_token);
-                } else {
-                  console.error('[Efí Bank SDK - Resposta Inválida]', response);
-                  reject(new Error('Resposta inválida do SDK de tokenização da Efí Bank (campo payment_token ausente).'));
-                }
-              }
-            });
-          } catch (err: any) {
+      const doTokenize = (checkoutObj: any) => {
+        try {
+          checkoutObj.getPaymentToken({
+            brand: cardDetails.brand,
+            number: cardDetails.number,
+            cvv: cardDetails.cvv,
+            expiration_month: cardDetails.expirationMonth,
+            expiration_year: cardDetails.expirationYear
+          }, (error: any, response: any) => {
             clearTimeout(timeoutId);
-            console.error('[Efí Bank SDK - Exceção em checkout.getPaymentToken]', err);
-            if (!isSandbox) {
-              reject(new Error(err.message || 'Erro interno do SDK da Efí ao gerar o token de pagamento.'));
+            if (error) {
+              console.error('[Efí Bank SDK - Erro Crítico de Tokenização]', JSON.stringify(error, null, 2));
+              reject(new Error(error.error_description || error.message || `Erro da Efí: Code ${error.code} - ${error.error}`));
             } else {
-              resolve('token_simulado_desenvolvedor');
+              if (response && response.data && response.data.payment_token) {
+                resolve(response.data.payment_token);
+              } else {
+                console.error('[Efí Bank SDK - Resposta Inválida]', response);
+                reject(new Error('Resposta inválida do SDK de tokenização da Efí Bank (campo payment_token ausente).'));
+              }
             }
+          });
+        } catch (err: any) {
+          clearTimeout(timeoutId);
+          console.error('[Efí Bank SDK - Exceção em getPaymentToken]', err);
+          if (!isSandbox) {
+            reject(new Error(err.message || 'Erro interno do SDK da Efí ao gerar o token de pagamento.'));
+          } else {
+            resolve('token_simulado_desenvolvedor');
           }
-        });
-      } catch (err: any) {
+        }
+      };
+
+      if (typeof efiSdk.ready === 'function') {
+        try {
+          efiSdk.ready((checkout: any) => {
+            doTokenize(checkout);
+          });
+        } catch (err: any) {
+          clearTimeout(timeoutId);
+          if (!isSandbox) {
+            reject(new Error(err.message || 'Erro de inicialização do SDK da Efí no checkout.'));
+          } else {
+            resolve('token_simulado_desenvolvedor');
+          }
+        }
+      } else if (typeof efiSdk.payData === 'function') {
+        doTokenize(efiSdk);
+      } else {
         clearTimeout(timeoutId);
-        console.error('[Efí Bank SDK - Exceção em efiSdk.ready]', err);
         if (!isSandbox) {
-          reject(new Error(err.message || 'Erro de inicialização do SDK da Efí no checkout.'));
+          reject(new Error('SDK da Efí carregado, mas método de tokenização não disponível.'));
         } else {
           resolve('token_simulado_desenvolvedor');
         }
@@ -393,9 +454,6 @@ export default function ClientDashboard({
           }
 
           setCheckoutPixData(data);
-          if ((window as any).zentexSpeakForce) {
-            (window as any).zentexSpeakForce('Pix gerado com sucesso via Efí Bank!');
-          }
         } catch (err: any) {
           console.error(err);
           setCheckoutError(err.message || 'Erro de conexão ou escopo de API mTLS com a Efí.');
@@ -426,9 +484,6 @@ export default function ClientDashboard({
       if (!res.ok) throw new Error('Erro ao registrar liquidação.');
 
       setCheckoutSuccess(true);
-      if ((window as any).zentexSpeakForce) {
-        (window as any).zentexSpeakForce('Pagamento Pix liquidado com sucesso!');
-      }
       setTimeout(() => {
         setCheckoutOrder(null);
         onRefreshData();
@@ -593,6 +648,14 @@ export default function ClientDashboard({
       const expirationMonth = expiryMonth.trim();
       const expirationYear = expiryYearShort ? `20${expiryYearShort.trim()}` : '';
 
+      // Auto-load Efí SDK via Auto-Loader promise before tokenizing
+      try {
+        await loadEfiSdk();
+      } catch (sdkErr: any) {
+        console.error('[Efí SDK] Erro ao carregar SDK no envio do formulário:', sdkErr);
+        throw new Error(sdkErr.message || 'Não foi possível carregar o módulo de segurança da Efí Bank a tempo.');
+      }
+
       // 1. Tokenize card using Efí SDK (returns simulation token if SDK not loaded)
       const cardToken = await getEfiCardToken({
         brand,
@@ -649,9 +712,6 @@ export default function ClientDashboard({
       if (!res.ok) throw new Error('Erro ao registrar liquidação.');
 
       setCheckoutSuccess(true);
-      if ((window as any).zentexSpeakForce) {
-        (window as any).zentexSpeakForce('Pagamento autorizado com sucesso!');
-      }
       setTimeout(() => {
         setCheckoutOrder(null);
         onRefreshData();
@@ -701,9 +761,6 @@ export default function ClientDashboard({
     setSelectedExtras([]);
     setObservations('');
     setTitle(service.name);
-    if ((window as any).zentexSpeakForce) {
-      (window as any).zentexSpeakForce(`Serviço de ${service.name} selecionado.`);
-    }
   };
 
   const handleBotResponse = async (userText: string) => {
@@ -954,6 +1011,14 @@ export default function ClientDashboard({
         const expirationMonth = expiryMonth.trim();
         const expirationYear = expiryYearShort ? `20${expiryYearShort.trim()}` : '';
 
+        // Auto-load Efí SDK via Auto-Loader promise before tokenizing
+        try {
+          await loadEfiSdk();
+        } catch (sdkErr: any) {
+          console.error('[Efí SDK] Erro ao carregar SDK no cadastro de ordem:', sdkErr);
+          throw new Error(sdkErr.message || 'Não foi possível carregar o módulo de segurança da Efí Bank a tempo.');
+        }
+
         // Generate card token via Efí SDK or Developer simulation
         const cardToken = await getEfiCardToken({
           brand,
@@ -1027,10 +1092,6 @@ export default function ClientDashboard({
         setSelectedExtras([]);
         setObservations('');
 
-        if ((window as any).zentexSpeakForce) {
-          (window as any).zentexSpeakForce('Pagamento autorizado e solicitação registrada com sucesso!');
-        }
-
         alert('Pagamento aprovado e solicitação enviada com sucesso! Um administrador irá analisar e atribuir um técnico em breve.');
         setActiveTab('my-orders');
 
@@ -1065,10 +1126,6 @@ export default function ClientDashboard({
           setCheckoutOrder(createdOrder);
           setCheckoutMethod('pix');
           setActiveTab('my-orders');
-
-          if ((window as any).zentexSpeakForce) {
-            (window as any).zentexSpeakForce('Solicitação registrada. Abra o painel de checkout para realizar o Pix.');
-          }
 
           alert('Sua solicitação foi registrada com sucesso! Copie a chave Pix ou escaneie o QR Code no painel de Checkout Seguro para concluir seu pagamento.');
         } else {
@@ -1855,7 +1912,6 @@ export default function ClientDashboard({
                               type="button"
                               onClick={() => {
                                 setShowReceiptOrder(order);
-                                if ((window as any).zentexSpeakForce) (window as any).zentexSpeakForce('Abrindo recibo de transação segura.');
                               }}
                               className="px-2.5 py-1 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-bold text-[8px] uppercase tracking-wider rounded-lg shadow-sm cursor-pointer transition-all shrink-0 flex items-center gap-1 hover:border-emerald-300"
                             >
@@ -1880,7 +1936,6 @@ export default function ClientDashboard({
                                 type="button"
                                 onClick={() => {
                                   setCheckoutOrder(order);
-                                  if ((window as any).zentexSpeakForce) (window as any).zentexSpeakForce('Iniciando checkout seguro do Efí Bank.');
                                 }}
                                 className="px-2.5 py-1.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-extrabold text-[8px] uppercase tracking-wider rounded-lg shadow-md cursor-pointer transition-all shrink-0 flex items-center gap-1 scale-102 hover:scale-105 active:scale-95 animate-pulse"
                               >
