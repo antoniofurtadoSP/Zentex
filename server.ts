@@ -1441,7 +1441,12 @@ app.get('/api/payment/efi/config', (req, res) => {
 // Public Efí Configuration for the client-side
 app.get('/api/payment/efi/public-config', (req, res) => {
   const config = getEfiConfig();
-  const accountCode = process.env.EFI_ACCOUNT_CODE || '';
+  const accountCode = process.env.EFI_ACCOUNT_CODE || 
+                      process.env.EFI_ACCOUNT_HASH || 
+                      process.env.VITE_EFI_ACCOUNT_HASH || 
+                      process.env.NEXT_PUBLIC_EFI_ACCOUNT_HASH || 
+                      process.env.VITE_EFI_ACCOUNT_CODE || 
+                      '';
   
   const hasCardConfig = !!(config && accountCode);
   const hasPixConfig = !!(config && config.pixKey && (config.certBase64 || config.certPath));
@@ -1505,10 +1510,33 @@ app.post('/api/payment/efi/create-pix', async (req, res) => {
 });
 
 app.post('/api/payment/efi/charge-card', async (req, res) => {
+  console.log('[Efí Bank Backend] Recebida requisição de pagamento por cartão:', {
+    orderId: req.body.orderId,
+    amount: req.body.amount,
+    hasCardToken: !!req.body.cardToken,
+    cardTokenLength: req.body.cardToken ? req.body.cardToken.length : 0,
+    clientName: req.body.clientName,
+    clientEmail: req.body.clientEmail,
+    clientCpf: req.body.clientCpf ? '***' + req.body.clientCpf.slice(-3) : null,
+    installments: req.body.installments
+  });
+
   const { orderId, amount, cardToken, clientName, clientEmail, clientCpf, installments, sandboxSimulation } = req.body;
 
-  if (!orderId || !amount || !cardToken || !clientName || !clientEmail || !clientCpf) {
-    res.status(400).json({ error: 'Dados de cartão ou do pagador incompletos.' });
+  const missingFields = [];
+  if (!orderId) missingFields.push('orderId');
+  if (!amount) missingFields.push('amount');
+  if (!cardToken) missingFields.push('cardToken (payment_token)');
+  if (!clientName) missingFields.push('clientName');
+  if (!clientEmail) missingFields.push('clientEmail');
+  if (!clientCpf) missingFields.push('clientCpf');
+
+  if (missingFields.length > 0) {
+    console.error('[Efí Bank Backend] Erro 400 - Campos obrigatórios ausentes:', missingFields);
+    res.status(400).json({ 
+      error: 'Dados de cartão ou do pagador incompletos.',
+      details: `Os seguintes campos obrigatórios estão ausentes ou vazios: ${missingFields.join(', ')}`
+    });
     return;
   }
 

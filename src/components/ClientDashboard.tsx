@@ -180,6 +180,7 @@ export default function ClientDashboard({
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [checkoutSuccess, setCheckoutSuccess] = useState(false);
   const [sandboxSimulation, setSandboxSimulation] = useState<'approved' | 'declined'>('approved');
+  const isIframe = typeof window !== 'undefined' && window.self !== window.top;
 
   const [efiPublicConfig, setEfiPublicConfig] = useState<{
     isSandbox: boolean;
@@ -199,78 +200,90 @@ export default function ClientDashboard({
   }, []);
 
   useEffect(() => {
-    if (!efiPublicConfig) return;
+    // Determine the active account code and environment, falling back to Vite environment variables if REST API isn't ready
+    const activeAccountCode = efiPublicConfig?.accountCode || 
+                              ((import.meta as any).env.VITE_EFI_ACCOUNT_HASH as string) || 
+                              ((import.meta as any).env.VITE_EFI_ACCOUNT_CODE as string) || 
+                              '';
+    const activeIsSandbox = efiPublicConfig 
+      ? efiPublicConfig.isSandbox 
+      : ((import.meta as any).env.VITE_EFI_SANDBOX === 'true' || (import.meta as any).env.VITE_EFI_SANDBOX === true);
 
-    const isCardConfigured = efiPublicConfig.hasCardConfig ?? efiPublicConfig.hasConfig;
+    const isCardConfigured = efiPublicConfig?.hasCardConfig || efiPublicConfig?.hasConfig || !!activeAccountCode;
 
-    if (!isCardConfigured || !efiPublicConfig.accountCode) {
+    if (!isCardConfigured || !activeAccountCode) {
       setEfiSdkStatus('missing_config');
       return;
     }
 
     const scriptId = 'efi-payment-sdk';
-    const existingScript = document.getElementById(scriptId);
-
-    if (existingScript) {
-      const gn = (window as any).$gn;
-      if (gn && typeof gn.ready === 'function') {
-        setEfiSdkStatus('loaded');
-      } else {
-        setEfiSdkStatus('loading');
-        const checkInterval = setInterval(() => {
-          const currentGn = (window as any).$gn;
-          if (currentGn && typeof currentGn.ready === 'function') {
-            setEfiSdkStatus('loaded');
-            clearInterval(checkInterval);
-          }
-        }, 500);
-        setTimeout(() => clearInterval(checkInterval), 5000);
-      }
-      return;
-    }
-
-    setEfiSdkStatus('loading');
-    const script = document.createElement('script');
-    script.id = scriptId;
-    script.type = 'text/javascript';
-    script.src = efiPublicConfig.isSandbox
+    const targetSrc = activeIsSandbox
       ? 'https://sandbox.gerencianet.com.br/v1/cdn'
       : 'https://api.gerencianet.com.br/v1/cdn';
-    script.async = true;
-    
-    (window as any).$gn = [];
-    (window as any).$gn.push(['AccountCode', efiPublicConfig.accountCode]);
-    
-    script.onload = () => {
-      console.log('Efí Bank Payment SDK carregado com sucesso!');
-      setTimeout(() => {
+
+    let script = document.getElementById(scriptId) as HTMLScriptElement | null;
+
+    if (script) {
+      if (script.src === targetSrc) {
+        // Correct script already injected, check if fully initialized
         const gn = (window as any).$gn;
         if (gn && typeof gn.ready === 'function') {
           setEfiSdkStatus('loaded');
         } else {
           setEfiSdkStatus('loading');
-          let attempts = 0;
-          const poll = setInterval(() => {
-            attempts++;
-            const activeGn = (window as any).$gn;
-            if (activeGn && typeof activeGn.ready === 'function') {
+          const checkInterval = setInterval(() => {
+            const currentGn = (window as any).$gn;
+            if (currentGn && typeof currentGn.ready === 'function') {
               setEfiSdkStatus('loaded');
-              clearInterval(poll);
-            } else if (attempts > 12) {
-              setEfiSdkStatus('failed');
-              clearInterval(poll);
+              clearInterval(checkInterval);
             }
           }, 300);
+          setTimeout(() => clearInterval(checkInterval), 5000);
+        }
+        return;
+      } else {
+        // Environment mismatch: remove the script to reload the correct one
+        console.log('[Efí Bank] Alternando ambiente do SDK de Pagamento. Recarregando script...');
+        script.remove();
+        script = null;
+      }
+    }
+
+    setEfiSdkStatus('loading');
+    
+    // Clear and push AccountCode correctly before appending script
+    (window as any).$gn = [];
+    (window as any).$gn.push(['AccountCode', activeAccountCode]);
+
+    const newScript = document.createElement('script');
+    newScript.id = scriptId;
+    newScript.type = 'text/javascript';
+    newScript.src = targetSrc;
+    newScript.async = true;
+    
+    newScript.onload = () => {
+      console.log(`[Efí Bank] SDK de Pagamento (${activeIsSandbox ? 'Sandbox' : 'Produção'}) carregado com sucesso!`);
+      let attempts = 0;
+      const poll = setInterval(() => {
+        attempts++;
+        const activeGn = (window as any).$gn;
+        if (activeGn && typeof activeGn.ready === 'function') {
+          setEfiSdkStatus('loaded');
+          clearInterval(poll);
+        } else if (attempts > 20) {
+          console.error('[Efí Bank] Falha de inicialização: objeto $gn.ready não disponível após carregar o script.');
+          setEfiSdkStatus('failed');
+          clearInterval(poll);
         }
       }, 200);
     };
 
-    script.onerror = () => {
-      console.error('Erro ao carregar o SDK de Pagamento da Efí Bank.');
+    newScript.onerror = (err) => {
+      console.error('[Efí Bank] Falha crítica ao carregar o script do SDK da Efí:', err);
       setEfiSdkStatus('failed');
     };
 
-    document.body.appendChild(script);
+    document.body.appendChild(newScript);
   }, [efiPublicConfig]);
 
   const detectCardBrand = (number: string): string => {
@@ -293,16 +306,28 @@ export default function ClientDashboard({
     expirationYear: string;
   }): Promise<string> => {
     return new Promise((resolve, reject) => {
+      const isSandbox = efiPublicConfig 
+        ? efiPublicConfig.isSandbox 
+        : ((import.meta as any).env.VITE_EFI_SANDBOX === 'true' || (import.meta as any).env.VITE_EFI_SANDBOX === true);
+
       // Configurar um timeout de 4 segundos para evitar que a promessa trave a interface caso o SDK da Efí não responda
       const timeoutId = setTimeout(() => {
-        console.warn('[Efí SDK] Timeout na tokenização do cartão. Usando token de simulação.');
-        resolve('token_simulado_desenvolvedor');
+        console.warn('[Efí SDK] Timeout na tokenização do cartão.');
+        if (!isSandbox) {
+          reject(new Error('Tempo limite esgotado ao tentar validar e criptografar os dados do cartão na Efí Bank. Verifique sua conexão ou tente novamente fora do iframe do AI Studio.'));
+        } else {
+          resolve('token_simulado_desenvolvedor');
+        }
       }, 4000);
 
       const gn = (window as any).$gn;
       if (!gn || typeof gn.ready !== 'function') {
         clearTimeout(timeoutId);
-        resolve('token_simulado_desenvolvedor');
+        if (!isSandbox) {
+          reject(new Error('O SDK seguro de cartão de crédito da Efí Bank não pôde ser carregado ou inicializado. Verifique se o AdBlock está bloqueando scripts de terceiros, ou abra a aplicação em uma nova aba separada fora do iframe do AI Studio.'));
+        } else {
+          resolve('token_simulado_desenvolvedor');
+        }
         return;
       }
 
@@ -318,22 +343,35 @@ export default function ClientDashboard({
             }, (error: any, response: any) => {
               clearTimeout(timeoutId);
               if (error) {
-                console.error('Erro de tokenização da Efí:', error);
-                reject(new Error(error.error_description || error.message || 'Falha ao validar cartão de crédito na Efí Bank.'));
+                console.error('[Efí Bank SDK - Erro Crítico de Tokenização]', JSON.stringify(error, null, 2));
+                reject(new Error(error.error_description || error.message || `Erro da Efí: Code ${error.code} - ${error.error}`));
               } else {
-                resolve(response.data.payment_token);
+                if (response && response.data && response.data.payment_token) {
+                  resolve(response.data.payment_token);
+                } else {
+                  console.error('[Efí Bank SDK - Resposta Inválida]', response);
+                  reject(new Error('Resposta inválida do SDK de tokenização da Efí Bank (campo payment_token ausente).'));
+                }
               }
             });
           } catch (err: any) {
             clearTimeout(timeoutId);
-            console.error('Erro ao chamar getPaymentToken no SDK da Efí:', err);
-            resolve('token_simulado_desenvolvedor');
+            console.error('[Efí Bank SDK] Erro ao chamar getPaymentToken:', err);
+            if (!isSandbox) {
+              reject(new Error(`Erro ao gerar hash do cartão: ${err.message || 'Erro interno do SDK da Efí'}`));
+            } else {
+              resolve('token_simulado_desenvolvedor');
+            }
           }
         });
       } catch (err: any) {
         clearTimeout(timeoutId);
-        console.error('Erro ao chamar gn.ready no SDK da Efí:', err);
-        resolve('token_simulado_desenvolvedor');
+        console.error('[Efí Bank SDK] Erro ao chamar gn.ready:', err);
+        if (!isSandbox) {
+          reject(new Error(`Falha na inicialização do SDK da Efí: ${err.message || 'Erro de inicialização'}`));
+        } else {
+          resolve('token_simulado_desenvolvedor');
+        }
       }
     });
   };
@@ -497,6 +535,14 @@ export default function ClientDashboard({
         expirationMonth,
         expirationYear
       });
+
+      const activeIsSandbox = efiPublicConfig 
+        ? efiPublicConfig.isSandbox 
+        : ((import.meta as any).env.VITE_EFI_SANDBOX === 'true' || (import.meta as any).env.VITE_EFI_SANDBOX === true);
+
+      if (!cardToken || (!activeIsSandbox && cardToken === 'token_simulado_desenvolvedor')) {
+        throw new Error('A geração do token do cartão falhou ou retornou um token inválido para o ambiente de produção. Certifique-se de que não há AdBlocks interferindo e que você não está executando no iframe restrito do AI Studio.');
+      }
 
       // 2. Post payment charge to the server
       const payRes = await fetch('/api/payment/efi/charge-card', {
@@ -835,6 +881,14 @@ export default function ClientDashboard({
           expirationMonth,
           expirationYear
         });
+
+        const activeIsSandbox = efiPublicConfig 
+          ? efiPublicConfig.isSandbox 
+          : ((import.meta as any).env.VITE_EFI_SANDBOX === 'true' || (import.meta as any).env.VITE_EFI_SANDBOX === true);
+
+        if (!cardToken || (!activeIsSandbox && cardToken === 'token_simulado_desenvolvedor')) {
+          throw new Error('A geração do token do cartão falhou ou retornou um token inválido para o ambiente de produção. Certifique-se de que não há AdBlocks interferindo e que você não está executando no iframe restrito do AI Studio.');
+        }
 
         // Submit charge transaction to the backend
         const payRes = await fetch('/api/payment/efi/charge-card', {
@@ -1461,6 +1515,17 @@ export default function ClientDashboard({
                         {/* CARDS INPUTS */}
                         {(selectedPayMethod === 'credit' || selectedPayMethod === 'debit') && (
                           <div className="bg-white border border-slate-200 rounded-xl p-3 space-y-2.5 animate-fade-in">
+                            {isIframe && efiPublicConfig && !efiPublicConfig.isSandbox && (
+                              <div className="bg-indigo-50 border border-indigo-150 p-3 rounded-xl text-left space-y-1 animate-fade-in mb-2.5">
+                                <span className="text-indigo-800 font-extrabold text-[9px] uppercase tracking-wider block">🔒 Dica de Segurança (Iframe Detectado)</span>
+                                <p className="text-[8px] text-indigo-750 leading-relaxed">
+                                  Você está visualizando o app no painel integrado do AI Studio. Gateways seguros como a <strong>Efí Bank</strong> restringem a validação de cartões em iframes de terceiros.
+                                </p>
+                                <p className="text-[8px] text-indigo-900 font-bold leading-normal">
+                                  👉 Para prosseguir com o pagamento por cartão de forma segura, abra o aplicativo em uma aba externa (clicando no botão de seta no canto superior direito do seu preview)!
+                                </p>
+                              </div>
+                            )}
                             <div className="grid grid-cols-1 gap-2">
                               <input
                                 type="text"
@@ -1566,7 +1631,14 @@ export default function ClientDashboard({
                         ) : (
                           <button
                             type="submit"
-                            disabled={submitting}
+                            disabled={
+                              submitting || 
+                              ((selectedPayMethod === 'credit' || selectedPayMethod === 'debit') && (
+                                efiSdkStatus === 'loading' || 
+                                efiSdkStatus === 'missing_config' || 
+                                (efiSdkStatus === 'failed' && efiPublicConfig && !efiPublicConfig.isSandbox)
+                              ))
+                            }
                             className="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:from-slate-300 disabled:to-slate-400 text-white text-xs font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 transition-all shadow-md cursor-pointer active:scale-95 duration-150"
                           >
                             <Send className="w-4 h-4" />
@@ -2184,6 +2256,18 @@ export default function ClientDashboard({
                       {checkoutMethod === 'card' && (
                         <form onSubmit={handleConfirmCardPayment} className="space-y-3 text-left">
                           
+                          {isIframe && efiPublicConfig && !efiPublicConfig.isSandbox && (
+                            <div className="bg-indigo-50 border border-indigo-150 p-3.5 rounded-2xl text-left space-y-1.5 animate-fade-in mb-2.5">
+                              <span className="text-indigo-800 font-extrabold text-[10px] uppercase tracking-wider block">🔒 Dica de Segurança (Iframe Detectado)</span>
+                              <p className="text-[10px] text-indigo-700 leading-relaxed font-medium">
+                                Você está visualizando a aplicação integrada no AI Studio. Gateways de pagamento seguro como a <strong>Efí Bank</strong> costumam bloquear a tokenização de cartões (CORS/Criptografia) se rodarem dentro de um iframe de terceiros.
+                              </p>
+                              <p className="text-[9px] text-indigo-900 font-bold leading-normal">
+                                👉 Para realizar o pagamento com cartão com sucesso, por favor, abra este aplicativo em uma aba separada (clicando no botão de seta no canto superior direito do seu preview) e realize a operação!
+                              </p>
+                            </div>
+                          )}
+                          
                           {efiSdkStatus === 'missing_config' && (
                             <div className="bg-amber-50 border border-amber-200 p-3.5 rounded-2xl text-left space-y-1.5 animate-fade-in">
                               <span className="text-amber-800 font-extrabold text-[10px] uppercase tracking-wider block">⚠️ Configuração de Cartão Pendente</span>
@@ -2356,8 +2440,13 @@ export default function ClientDashboard({
                             </span>
                             <button
                               type="submit"
-                              disabled={checkoutLoading}
-                              className="px-6 py-2.5 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white text-xs font-bold rounded-xl transition-all shadow-md cursor-pointer active:scale-95 duration-150 shrink-0 flex items-center gap-1.5"
+                              disabled={
+                                checkoutLoading ||
+                                efiSdkStatus === 'loading' ||
+                                efiSdkStatus === 'missing_config' ||
+                                (efiSdkStatus === 'failed' && efiPublicConfig && !efiPublicConfig.isSandbox)
+                              }
+                              className="px-6 py-2.5 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 disabled:from-slate-300 disabled:to-slate-400 text-white text-xs font-bold rounded-xl transition-all shadow-md cursor-pointer active:scale-95 duration-150 shrink-0 flex items-center gap-1.5"
                             >
                               {checkoutLoading ? (
                                 <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
