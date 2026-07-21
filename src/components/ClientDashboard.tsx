@@ -143,11 +143,10 @@ export default function ClientDashboard({
   onRefreshData
 }: ClientDashboardProps) {
   // Configuração e Fallback da Account Hash conforme solicitado
-  const EFI_ENV_ACCOUNT_HASH = ((import.meta as any).env?.VITE_EFI_ACCOUNT_HASH as string) || 
-                               ((import.meta as any).env?.VITE_EFI_ACCOUNT_CODE as string) ||
-                               ((import.meta as any).env?.NEXT_PUBLIC_EFI_ACCOUNT_HASH as string);
-
-  const EFI_ACCOUNT_HASH = EFI_ENV_ACCOUNT_HASH || "3931688641e8e06302526275df0fada3";
+  const ACCOUNT_HASH = ((import.meta as any).env?.VITE_EFI_ACCOUNT_HASH as string) || 
+                       ((import.meta as any).env?.VITE_EFI_ACCOUNT_CODE as string) || 
+                       ((import.meta as any).env?.NEXT_PUBLIC_EFI_ACCOUNT_HASH as string) ||
+                       "3931688641e8e06302526275df0fada3";
 
   const [activeTab, setActiveTab] = useState<'request' | 'my-orders' | 'chat' | 'profile'>('request');
   const [title, setTitle] = useState('');
@@ -207,12 +206,15 @@ export default function ClientDashboard({
   }, []);
 
   useEffect(() => {
-    if (!EFI_ENV_ACCOUNT_HASH) {
-      console.error("[Efí SDK] Chave Account Hash ausente");
+    // 1. Tratamento Imediato de Erro na Inicialização
+    if (!ACCOUNT_HASH || ACCOUNT_HASH.trim() === "" || ACCOUNT_HASH === "SUA_ACCOUNT_HASH_AQUI") {
+      alert("Erro: Chave Account Hash não configurada");
+      setEfiSdkStatus('missing_config');
+      return;
     }
 
     // Determine the active account code and environment, falling back to Vite environment variables if REST API isn't ready
-    const activeAccountCode = efiPublicConfig?.accountCode || EFI_ACCOUNT_HASH;
+    const activeAccountCode = efiPublicConfig?.accountCode || ACCOUNT_HASH;
     const activeIsSandbox = efiPublicConfig 
       ? efiPublicConfig.isSandbox 
       : ((import.meta as any).env.VITE_EFI_SANDBOX === 'true' || (import.meta as any).env.VITE_EFI_SANDBOX === true);
@@ -237,6 +239,7 @@ export default function ClientDashboard({
           try {
             activeGn.setAccount(activeAccountCode);
             console.log('[Efí SDK] Chave Account Hash configurada via setAccount:', activeAccountCode);
+            console.log('[Efí SDK] Inicializado com sucesso!');
           } catch (e) {
             console.error('[Efí SDK] Erro ao chamar setAccount:', e);
           }
@@ -246,11 +249,13 @@ export default function ClientDashboard({
           filtered.push(['AccountCode', activeAccountCode]);
           (window as any).$gn = filtered;
           console.log('[Efí SDK] Chave Account Hash enfileirada no array $gn:', activeAccountCode);
+          console.log('[Efí SDK] Inicializado com sucesso!');
         }
       } else {
         // Create as array queue if neither exists yet
         (window as any).$gn = [['AccountCode', activeAccountCode]];
         console.log('[Efí SDK] Chave Account Hash enfileirada em novo array $gn:', activeAccountCode);
+        console.log('[Efí SDK] Inicializado com sucesso!');
       }
     };
 
@@ -262,22 +267,9 @@ export default function ClientDashboard({
         script.id = scriptId;
       }
       if (script.src === targetSrc) {
-        // Correct script already injected, run initialization and check readiness
+        // Correct script already injected, run initialization and immediately set ready state
         initializeAccount();
-        const gn = (window as any).$gn || (window as any).EfiPay;
-        if (gn && typeof gn.ready === 'function') {
-          setEfiSdkStatus('loaded');
-        } else {
-          setEfiSdkStatus('loading');
-          const checkInterval = setInterval(() => {
-            const currentGn = (window as any).$gn || (window as any).EfiPay;
-            if (currentGn && typeof currentGn.ready === 'function') {
-              setEfiSdkStatus('loaded');
-              clearInterval(checkInterval);
-            }
-          }, 300);
-          setTimeout(() => clearInterval(checkInterval), 5000);
-        }
+        setEfiSdkStatus('loaded');
         return;
       } else {
         // Environment mismatch: remove the script to reload the correct one
@@ -302,19 +294,6 @@ export default function ClientDashboard({
       console.log(`[Efí Bank] SDK de Pagamento (${activeIsSandbox ? 'Sandbox' : 'Produção'}) carregado com sucesso!`);
       initializeAccount();
       setEfiSdkStatus('loaded');
-      
-      let attempts = 0;
-      const poll = setInterval(() => {
-        attempts++;
-        const activeGn = (window as any).$gn || (window as any).EfiPay;
-        if (activeGn && typeof activeGn.ready === 'function') {
-          initializeAccount();
-          clearInterval(poll);
-        } else if (attempts > 30) {
-          console.error('[Efí Bank] Falha de inicialização: objeto $gn.ready não disponível após carregar o script.');
-          clearInterval(poll);
-        }
-      }, 150);
     };
 
     newScript.onerror = (err) => {
@@ -382,7 +361,7 @@ export default function ClientDashboard({
         }
 
         // Guarantee account initialization right before tokenizing
-        const activeAccountCode = efiPublicConfig?.accountCode || EFI_ACCOUNT_HASH;
+        const activeAccountCode = efiPublicConfig?.accountCode || ACCOUNT_HASH;
         
         try {
           if (typeof gn.setAccount === 'function') {
