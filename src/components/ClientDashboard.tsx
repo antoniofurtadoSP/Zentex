@@ -263,16 +263,17 @@ export default function ClientDashboard({
     
     newScript.onload = () => {
       console.log(`[Efí Bank] SDK de Pagamento (${activeIsSandbox ? 'Sandbox' : 'Produção'}) carregado com sucesso!`);
+      // Define a prontidão como 'loaded' imediatamente conforme solicitado
+      setEfiSdkStatus('loaded');
+      
       let attempts = 0;
       const poll = setInterval(() => {
         attempts++;
         const activeGn = (window as any).$gn;
         if (activeGn && typeof activeGn.ready === 'function') {
-          setEfiSdkStatus('loaded');
           clearInterval(poll);
         } else if (attempts > 20) {
           console.error('[Efí Bank] Falha de inicialização: objeto $gn.ready não disponível após carregar o script.');
-          setEfiSdkStatus('failed');
           clearInterval(poll);
         }
       }, 200);
@@ -454,52 +455,115 @@ export default function ClientDashboard({
     }
   };
 
-  const validateCardDetails = (num: string, exp: string, cvv: string): string | null => {
-    const cleanNum = num.replace(/\D/g, '');
-    if (!cleanNum || cleanNum.length < 13 || cleanNum.length > 19) {
-      return 'Número de cartão inválido (deve conter entre 13 e 19 dígitos).';
+  const validateFormFields = (params: {
+    name: string;
+    number: string;
+    expiry: string;
+    cvv: string;
+    cpf: string;
+  }): { isValid: boolean; error: string | null } => {
+    console.log('[Zentex OS] --- INICIANDO VALIDAÇÃO DO CARTÃO ---');
+    console.log(`- Nome do Titular: "${params.name}"`);
+    console.log(`- Número do Cartão: "${params.number.replace(/\s+/g, '')}"`);
+    console.log(`- Validade: "${params.expiry}"`);
+    console.log(`- CVV: "${params.cvv}"`);
+    console.log(`- CPF/CNPJ: "${params.cpf}"`);
+
+    // 1. Nome do Titular
+    const isNameValid = params.name.trim().length >= 3;
+    console.log(`- Status Nome do Titular: ${isNameValid ? '✅ VÁLIDO' : '❌ INVÁLIDO'}`);
+    if (!isNameValid) {
+      return { isValid: false, error: 'O nome impresso no cartão deve ter pelo menos 3 caracteres.' };
     }
 
-    // Algoritmo de Luhn
-    let sum = 0;
-    let shouldDouble = false;
-    for (let i = cleanNum.length - 1; i >= 0; i--) {
-      let digit = parseInt(cleanNum.charAt(i), 10);
-      if (shouldDouble) {
-        digit *= 2;
-        if (digit > 9) digit -= 9;
+    // 2. Número do Cartão (Luhn)
+    const cleanNum = params.number.replace(/\D/g, '');
+    let isNumValid = cleanNum.length >= 13 && cleanNum.length <= 19;
+    if (isNumValid) {
+      let sum = 0;
+      let shouldDouble = false;
+      for (let i = cleanNum.length - 1; i >= 0; i--) {
+        let digit = parseInt(cleanNum.charAt(i), 10);
+        if (shouldDouble) {
+          digit *= 2;
+          if (digit > 9) digit -= 9;
+        }
+        sum += digit;
+        shouldDouble = !shouldDouble;
       }
-      sum += digit;
-      shouldDouble = !shouldDouble;
+      isNumValid = (sum % 10 === 0);
     }
-    if (sum % 10 !== 0) {
-      return 'Número de cartão inválido (Falha no dígito verificador do cartão).';
-    }
-
-    // Validação da data de expiração
-    const cleanExp = exp.replace(/\D/g, '');
-    if (cleanExp.length !== 4) {
-      return 'Validade incorreta. Use o formato MM/AA (ex: 12/29).';
-    }
-    const month = parseInt(cleanExp.substring(0, 2), 10);
-    const yearShort = parseInt(cleanExp.substring(2, 4), 10);
-    if (month < 1 || month > 12) {
-      return 'Mês de vencimento inválido (deve ser entre 01 e 12).';
-    }
-    const now = new Date();
-    const currentYearShort = now.getFullYear() % 100;
-    const currentMonth = now.getMonth() + 1;
-    if (yearShort < currentYearShort || (yearShort === currentYearShort && month < currentMonth)) {
-      return 'O cartão informado está expirado/vencido.';
+    console.log(`- Status Número do Cartão: ${isNumValid ? '✅ VÁLIDO' : '❌ INVÁLIDO'}`);
+    if (!isNumValid) {
+      return { isValid: false, error: 'O número do cartão de crédito informado é inválido. Verifique os números digitados.' };
     }
 
-    // Validação do CVV
-    const cleanCvv = cvv.replace(/\D/g, '');
-    if (cleanCvv.length < 3 || cleanCvv.length > 4) {
-      return 'Código de segurança (CVV) inválido (deve ter 3 ou 4 dígitos).';
+    // 3. Validade (MM/AA)
+    const cleanExp = params.expiry.replace(/\D/g, '');
+    let isExpValid = cleanExp.length === 4;
+    if (isExpValid) {
+      const month = parseInt(cleanExp.substring(0, 2), 10);
+      const yearShort = parseInt(cleanExp.substring(2, 4), 10);
+      if (month < 1 || month > 12) {
+        isExpValid = false;
+      } else {
+        const now = new Date();
+        const currentYearShort = now.getFullYear() % 100;
+        const currentMonth = now.getMonth() + 1;
+        if (yearShort < currentYearShort || (yearShort === currentYearShort && month < currentMonth)) {
+          isExpValid = false;
+        }
+      }
+    }
+    console.log(`- Status Validade do Cartão: ${isExpValid ? '✅ VÁLIDA' : '❌ INVÁLIDA'}`);
+    if (!isExpValid) {
+      return { isValid: false, error: 'A data de validade está incorreta ou expirada. Use o formato MM/AA (ex: 12/29).' };
     }
 
-    return null;
+    // 4. CVV
+    const cleanCvv = params.cvv.replace(/\D/g, '');
+    const isCvvValid = cleanCvv.length >= 3 && cleanCvv.length <= 4;
+    console.log(`- Status CVV: ${isCvvValid ? '✅ VÁLIDO' : '❌ INVÁLIDO'}`);
+    if (!isCvvValid) {
+      return { isValid: false, error: 'O código de segurança (CVV) do cartão é inválido (deve conter 3 ou 4 dígitos).' };
+    }
+
+    // 5. CPF/CNPJ
+    const cleanCpf = params.cpf.replace(/\D/g, '');
+    let isCpfValid = cleanCpf.length === 11 || cleanCpf.length === 14;
+    if (isCpfValid && cleanCpf.length === 11) {
+      if (/^(\d)\1{10}$/.test(cleanCpf)) {
+        isCpfValid = false;
+      } else {
+        let sum = 0;
+        let remainder;
+        for (let i = 1; i <= 9; i++) {
+          sum += parseInt(cleanCpf.substring(i - 1, i), 10) * (11 - i);
+        }
+        remainder = (sum * 10) % 11;
+        if (remainder === 10 || remainder === 11) remainder = 0;
+        if (remainder !== parseInt(cleanCpf.substring(9, 10), 10)) {
+          isCpfValid = false;
+        } else {
+          sum = 0;
+          for (let i = 1; i <= 10; i++) {
+            sum += parseInt(cleanCpf.substring(i - 1, i), 10) * (12 - i);
+          }
+          remainder = (sum * 10) % 11;
+          if (remainder === 10 || remainder === 11) remainder = 0;
+          if (remainder !== parseInt(cleanCpf.substring(10, 11), 10)) {
+            isCpfValid = false;
+          }
+        }
+      }
+    }
+    console.log(`- Status CPF/CNPJ: ${isCpfValid ? '✅ VÁLIDO' : '❌ INVÁLIDO'}`);
+    if (!isCpfValid) {
+      return { isValid: false, error: 'O CPF ou CNPJ informado é inválido. Verifique os números digitados.' };
+    }
+
+    console.log('[Zentex OS] --- VALIDAÇÃO CONCLUÍDA COM SUCESSO ✅ ---');
+    return { isValid: true, error: null };
   };
 
   const handleConfirmCardPayment = async (e: React.FormEvent) => {
@@ -507,16 +571,37 @@ export default function ClientDashboard({
     if (!checkoutOrder) return;
     
     if (!checkoutCardName || !checkoutCardNumber || !checkoutCardExpiry || !checkoutCardCVV || !checkoutCardCpf) {
-      alert('Por favor, preencha todos os campos do cartão.');
+      const missing = [];
+      if (!checkoutCardName) missing.push('Nome Impresso');
+      if (!checkoutCardNumber) missing.push('Número do Cartão');
+      if (!checkoutCardExpiry) missing.push('Validade (MM/AA)');
+      if (!checkoutCardCVV) missing.push('CVV');
+      if (!checkoutCardCpf) missing.push('CPF/CNPJ do Titular');
+      
+      setCheckoutError(`Por favor, preencha todos os campos obrigatórios do cartão: ${missing.join(', ')}`);
       return;
     }
 
     setCheckoutLoading(true);
     setCheckoutError(null);
 
-    const cardError = validateCardDetails(checkoutCardNumber, checkoutCardExpiry, checkoutCardCVV);
-    if (cardError) {
-      setCheckoutError(cardError);
+    // If SDK is loading, provide a helpful non-disabling message
+    if (efiSdkStatus === 'loading') {
+      setCheckoutError('O módulo de segurança da Efí Bank ainda está inicializando no navegador. Por favor, aguarde de 3 a 5 segundos e clique novamente.');
+      setCheckoutLoading(false);
+      return;
+    }
+
+    const validation = validateFormFields({
+      name: checkoutCardName,
+      number: checkoutCardNumber,
+      expiry: checkoutCardExpiry,
+      cvv: checkoutCardCVV,
+      cpf: checkoutCardCpf
+    });
+
+    if (!validation.isValid) {
+      setCheckoutError(validation.error);
       setCheckoutLoading(false);
       return;
     }
@@ -854,15 +939,37 @@ export default function ClientDashboard({
       // 1. CREDIT CARD / DEBIT CARD FLOW
       if (selectedPayMethod === 'credit' || selectedPayMethod === 'debit') {
         if (!cardName || !cardNumber || !cardExpiry || !cardCVV || !cardCpf) {
-          alert('Por favor, preencha todos os dados do seu cartão (incluindo CPF/CNPJ do titular) para autorização do pagamento.');
+          const missing = [];
+          if (!cardName) missing.push('Nome Impresso');
+          if (!cardNumber) missing.push('Número do Cartão');
+          if (!cardExpiry) missing.push('Validade (MM/AA)');
+          if (!cardCVV) missing.push('CVV');
+          if (!cardCpf) missing.push('CPF/CNPJ do Titular');
+          
+          alert(`Por favor, preencha todos os campos obrigatórios do cartão: ${missing.join(', ')}`);
           setIsPaying(false);
           setSubmitting(false);
           return;
         }
 
-        const cardError = validateCardDetails(cardNumber, cardExpiry, cardCVV);
-        if (cardError) {
-          alert(cardError);
+        // If SDK is loading, provide a helpful non-disabling message
+        if (efiSdkStatus === 'loading') {
+          alert('O módulo de segurança da Efí Bank ainda está inicializando no navegador. Por favor, aguarde de 3 a 5 segundos e clique novamente.');
+          setIsPaying(false);
+          setSubmitting(false);
+          return;
+        }
+
+        const validation = validateFormFields({
+          name: cardName,
+          number: cardNumber,
+          expiry: cardExpiry,
+          cvv: cardCVV,
+          cpf: cardCpf
+        });
+
+        if (!validation.isValid) {
+          alert(validation.error);
           setIsPaying(false);
           setSubmitting(false);
           return;
@@ -1631,14 +1738,7 @@ export default function ClientDashboard({
                         ) : (
                           <button
                             type="submit"
-                            disabled={
-                              submitting || 
-                              ((selectedPayMethod === 'credit' || selectedPayMethod === 'debit') && (
-                                efiSdkStatus === 'loading' || 
-                                efiSdkStatus === 'missing_config' || 
-                                (efiSdkStatus === 'failed' && efiPublicConfig && !efiPublicConfig.isSandbox)
-                              ))
-                            }
+                            disabled={submitting}
                             className="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:from-slate-300 disabled:to-slate-400 text-white text-xs font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 transition-all shadow-md cursor-pointer active:scale-95 duration-150"
                           >
                             <Send className="w-4 h-4" />
@@ -2440,12 +2540,7 @@ export default function ClientDashboard({
                             </span>
                             <button
                               type="submit"
-                              disabled={
-                                checkoutLoading ||
-                                efiSdkStatus === 'loading' ||
-                                efiSdkStatus === 'missing_config' ||
-                                (efiSdkStatus === 'failed' && efiPublicConfig && !efiPublicConfig.isSandbox)
-                              }
+                              disabled={checkoutLoading}
                               className="px-6 py-2.5 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 disabled:from-slate-300 disabled:to-slate-400 text-white text-xs font-bold rounded-xl transition-all shadow-md cursor-pointer active:scale-95 duration-150 shrink-0 flex items-center gap-1.5"
                             >
                               {checkoutLoading ? (
