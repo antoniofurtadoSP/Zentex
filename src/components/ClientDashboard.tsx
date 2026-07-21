@@ -219,100 +219,60 @@ export default function ClientDashboard({
   const loadEfiSdk = (): Promise<any> => {
     return new Promise((resolve, reject) => {
       const win = window as any;
-      const activeAccountCode = efiPublicConfig?.accountCode || ACCOUNT_HASH || '3931688641e8e06302526275df0fada3';
 
-      if (win.$gn) {
-        try {
-          if (typeof win.$gn.setAccount === 'function') {
-            win.$gn.setAccount(activeAccountCode);
-          }
-          console.log('[Efí SDK] Módulo validado instantaneamente!');
-          setIsSdkReady(true);
-          setEfiSdkStatus('loaded');
-        } catch (e) {
-          console.error('[Efí SDK] Erro ao configurar setAccount:', e);
-        }
-        return resolve(win.$gn);
+      if (win.EfiJs) {
+        setIsSdkReady(true);
+        setEfiSdkStatus('loaded');
+        return resolve(win.EfiJs);
       }
-
-      const isSandboxEnv = efiPublicConfig
-        ? (efiPublicConfig.isSandbox || !efiPublicConfig.hasCardConfig)
-        : true;
-
-      const urls = isSandboxEnv
-        ? ['https://sandbox.gerencianet.com.br/v1/cdn', 'https://api.gerencianet.com.br/v1/cdn']
-        : ['https://api.gerencianet.com.br/v1/cdn', 'https://sandbox.gerencianet.com.br/v1/cdn'];
 
       setEfiSdkStatus('loading');
+      const scriptId = 'efi-payment-token-script';
+      const cdnUrl = 'https://cdn.jsdelivr.net/gh/efipay/js-payment-token-efi/dist/payment-token-efi.min.js';
 
-      const tryLoadScript = (index: number) => {
-        if (index >= urls.length) {
-          setEfiSdkStatus('failed');
-          return reject(new Error('Não foi possível carregar o módulo de segurança da Efí Bank.'));
-        }
-
-        const currentUrl = urls[index];
-        const scriptId = 'efi-sdk-script';
-
-        const oldScript = document.getElementById(scriptId);
-        if (oldScript) {
-          oldScript.remove();
-        }
-
-        const script = document.createElement('script');
+      let script = document.getElementById(scriptId) as HTMLScriptElement | null;
+      if (!script) {
+        script = document.createElement('script');
         script.id = scriptId;
-        script.src = currentUrl;
+        script.src = cdnUrl;
         script.type = 'text/javascript';
         script.async = true;
-
-        script.onload = () => {
-          if (win.$gn) {
-            try {
-              if (typeof win.$gn.setAccount === 'function') {
-                win.$gn.setAccount(activeAccountCode);
-              }
-              setIsSdkReady(true);
-              setEfiSdkStatus('loaded');
-            } catch (e) {
-              console.error('[Efí SDK] Erro no setAccount no onload:', e);
-            }
-            resolve(win.$gn);
-          }
-        };
-
-        script.onerror = () => {
-          console.warn(`[Efí SDK] Falha ao carregar CDN (${currentUrl}), tentando fallback se disponível...`);
-          tryLoadScript(index + 1);
-        };
-
         document.head.appendChild(script);
+      }
+
+      script.onload = () => {
+        if (win.EfiJs) {
+          console.log('[Efí SDK] Biblioteca EfiJs (payment-token-efi) carregada com sucesso!');
+          setIsSdkReady(true);
+          setEfiSdkStatus('loaded');
+          resolve(win.EfiJs);
+        } else {
+          setEfiSdkStatus('failed');
+          reject(new Error('Biblioteca EfiJs não encontrada após carregar o script.'));
+        }
       };
 
-      const existingScript = document.getElementById('efi-sdk-script');
-      if (!existingScript) {
-        tryLoadScript(0);
-      }
+      script.onerror = () => {
+        console.warn('[Efí SDK] Falha ao carregar biblioteca js-payment-token-efi via jsDelivr CDN.');
+        setEfiSdkStatus('failed');
+        reject(new Error('Não foi possível carregar o módulo de segurança da Efí Bank.'));
+      };
 
       let attempts = 0;
       const interval = setInterval(() => {
         attempts++;
-        if (win.$gn) {
+        if (win.EfiJs) {
           clearInterval(interval);
-          try {
-            if (typeof win.$gn.setAccount === 'function') {
-              win.$gn.setAccount(activeAccountCode);
-            }
-            console.log('[Efí SDK] Módulo verificado e pronto!');
-            setIsSdkReady(true);
-            setEfiSdkStatus('loaded');
-          } catch (e) {
-            console.error('[Efí SDK] Erro ao configurar setAccount:', e);
-          }
-          resolve(win.$gn);
+          console.log('[Efí SDK] EfiJs detectado no ambiente!');
+          setIsSdkReady(true);
+          setEfiSdkStatus('loaded');
+          resolve(win.EfiJs);
         } else if (attempts > 25) { // 7.5s
           clearInterval(interval);
-          setEfiSdkStatus('failed');
-          reject(new Error('Não foi possível carregar o módulo de segurança da Efí Bank a tempo.'));
+          if (!win.EfiJs) {
+            setEfiSdkStatus('failed');
+            reject(new Error('Não foi possível carregar o módulo de segurança da Efí Bank a tempo.'));
+          }
         }
       }, 300);
     });
@@ -336,6 +296,8 @@ export default function ClientDashboard({
     cvv: string;
     expirationMonth: string;
     expirationYear: string;
+    holderName?: string;
+    holderDocument?: string;
   }): Promise<string> => {
     const isSandbox = efiPublicConfig 
       ? (efiPublicConfig.isSandbox || !efiPublicConfig.hasCardConfig) 
@@ -345,7 +307,7 @@ export default function ClientDashboard({
     try {
       efiSdk = await loadEfiSdk();
     } catch (err: any) {
-      console.warn('[Efí SDK] Não foi possível carregar o CDN do Efí Bank:', err?.message);
+      console.warn('[Efí SDK] Não foi possível carregar a biblioteca Efí Bank:', err?.message);
       if (isSandbox) {
         console.log('[Efí SDK] Modo Sandbox/Simulação ativo: gerando token de simulação de desenvolvimento.');
         return 'token_simulado_desenvolvedor';
@@ -356,75 +318,65 @@ export default function ClientDashboard({
 
     return new Promise((resolve, reject) => {
       const activeAccountCode = efiPublicConfig?.accountCode || ACCOUNT_HASH || '3931688641e8e06302526275df0fada3';
+      const environment = isSandbox ? 'sandbox' : 'production';
+
+      const hName = cardDetails.holderName || checkoutCardName || cardName || 'Cliente Zentex';
+      const hDoc = (cardDetails.holderDocument || checkoutCardCpf || cardCpf || '').replace(/\D/g, '');
 
       try {
-        if (typeof efiSdk.setAccount === 'function') {
-          efiSdk.setAccount(activeAccountCode);
-          console.log('[Efí SDK - Tokenização] setAccount configurado dinamicamente antes de tokenizar:', activeAccountCode);
+        const creditCardObj = efiSdk?.CreditCard || (window as any).EfiJs?.CreditCard;
+
+        if (!creditCardObj) {
+          if (isSandbox) {
+            console.log('[Efí SDK] EfiJs.CreditCard não disponível. Usando token simulado.');
+            return resolve('token_simulado_desenvolvedor');
+          }
+          return reject(new Error('Módulo EfiJs.CreditCard não encontrado na biblioteca da Efí Bank.'));
         }
-      } catch (err) {
-        console.error('[Efí SDK] Erro ao re-garantir setAccount no getEfiCardToken:', err);
-      }
 
-      const timeoutId = setTimeout(() => {
-        console.warn('[Efí SDK] Timeout na tokenização do cartão.');
-        reject(new Error('Tempo limite excedido ao inicializar o cartão'));
-      }, 8000);
-
-      const doTokenize = (checkoutObj: any) => {
-        try {
-          checkoutObj.getPaymentToken({
+        creditCardObj
+          .setAccount(activeAccountCode)
+          .setEnvironment(environment)
+          .setCreditCardData({
             brand: cardDetails.brand,
             number: cardDetails.number,
             cvv: cardDetails.cvv,
-            expiration_month: cardDetails.expirationMonth,
-            expiration_year: cardDetails.expirationYear
-          }, (error: any, response: any) => {
-            clearTimeout(timeoutId);
-            if (error) {
-              console.error('[Efí Bank SDK - Erro Crítico de Tokenização]', JSON.stringify(error, null, 2));
-              reject(new Error(error.error_description || error.message || `Erro da Efí: Code ${error.code} - ${error.error}`));
+            expirationMonth: cardDetails.expirationMonth,
+            expirationYear: cardDetails.expirationYear,
+            holderName: hName,
+            holderDocument: hDoc,
+            reuse: false
+          })
+          .getPaymentToken()
+          .then((data: any) => {
+            if (data && data.payment_token) {
+              console.log('[Efí SDK] Payment Token gerado com sucesso via EfiJs!');
+              resolve(data.payment_token);
             } else {
-              if (response && response.data && response.data.payment_token) {
-                resolve(response.data.payment_token);
+              console.error('[Efí SDK] Resposta da Efí sem payment_token:', data);
+              if (isSandbox) {
+                resolve('token_simulado_desenvolvedor');
               } else {
-                console.error('[Efí Bank SDK - Resposta Inválida]', response);
-                reject(new Error('Resposta inválida do SDK de tokenização da Efí Bank (campo payment_token ausente).'));
+                reject(new Error('Resposta inválida da Efí Bank (campo payment_token ausente).'));
               }
             }
+          })
+          .catch((err: any) => {
+            console.error('[Efí SDK - Erro em getPaymentToken]', err);
+            const errMsg = err?.error_description || err?.message || (typeof err === 'string' ? err : 'Erro na tokenização do cartão.');
+            if (isSandbox) {
+              console.log('[Efí SDK] Erro na tokenização em ambiente Sandbox. Gerando token simulado de desenvolvimento.');
+              resolve('token_simulado_desenvolvedor');
+            } else {
+              reject(new Error(errMsg));
+            }
           });
-        } catch (err: any) {
-          clearTimeout(timeoutId);
-          console.error('[Efí Bank SDK - Exceção em getPaymentToken]', err);
-          if (!isSandbox) {
-            reject(new Error(err.message || 'Erro interno do SDK da Efí ao gerar o token de pagamento.'));
-          } else {
-            resolve('token_simulado_desenvolvedor');
-          }
-        }
-      };
-
-      if (typeof efiSdk.ready === 'function') {
-        try {
-          efiSdk.ready((checkout: any) => {
-            doTokenize(checkout);
-          });
-        } catch (err: any) {
-          clearTimeout(timeoutId);
-          if (!isSandbox) {
-            reject(new Error(err.message || 'Erro de inicialização do SDK da Efí no checkout.'));
-          } else {
-            resolve('token_simulado_desenvolvedor');
-          }
-        }
-      } else if (typeof efiSdk.payData === 'function') {
-        doTokenize(efiSdk);
-      } else {
-        clearTimeout(timeoutId);
-        if (!isSandbox) {
-          reject(new Error('SDK da Efí carregado, mas método de tokenização não disponível.'));
-        } else {
+      } catch (err: any) {
+        console.error('[Efí SDK - Exceção de Execução]', err);
+        if (isSandbox) {
           resolve('token_simulado_desenvolvedor');
+        } else {
+          reject(new Error(err.message || 'Erro interno ao gerar o token de pagamento.'));
         }
       }
     });
@@ -665,8 +617,8 @@ export default function ClientDashboard({
       });
 
       const activeIsSandbox = efiPublicConfig 
-        ? efiPublicConfig.isSandbox 
-        : ((import.meta as any).env.VITE_EFI_SANDBOX === 'true' || (import.meta as any).env.VITE_EFI_SANDBOX === true);
+        ? (efiPublicConfig.isSandbox || !efiPublicConfig.hasCardConfig) 
+        : true;
 
       if (!cardToken || (!activeIsSandbox && cardToken === 'token_simulado_desenvolvedor')) {
         throw new Error('A geração do token do cartão falhou ou retornou um token inválido.');
@@ -1020,8 +972,8 @@ export default function ClientDashboard({
         });
 
         const activeIsSandbox = efiPublicConfig 
-          ? efiPublicConfig.isSandbox 
-          : ((import.meta as any).env.VITE_EFI_SANDBOX === 'true' || (import.meta as any).env.VITE_EFI_SANDBOX === true);
+          ? (efiPublicConfig.isSandbox || !efiPublicConfig.hasCardConfig) 
+          : true;
 
         if (!cardToken || (!activeIsSandbox && cardToken === 'token_simulado_desenvolvedor')) {
           throw new Error('A geração do token do cartão falhou ou retornou um token inválido.');

@@ -1,5 +1,5 @@
 /**
- * Utilitário para carregamento dinâmico e seguro do SDK da Efí Bank.
+ * Utilitário para carregamento dinâmico e seguro do SDK da Efí Bank (payment-token-efi).
  */
 
 interface EfiPublicConfig {
@@ -16,92 +16,49 @@ export const loadEfiSdk = (
   return new Promise((resolve, reject) => {
     const win = window as any;
 
-    const timeoutId = setTimeout(() => {
-      console.warn('[Efí SDK Utils] Timeout ao baixar ou inicializar o script do Efí Bank.');
-      reject(new Error('Falha ao baixar o script de segurança do Efí Bank'));
-    }, 8000);
-
-    const safeResolve = () => {
-      clearTimeout(timeoutId);
-      resolve();
-    };
-
-    const safeReject = (err: Error) => {
-      clearTimeout(timeoutId);
-      reject(err);
-    };
-
-    // 1. Se o SDK já estiver disponível e pronto, resolve imediatamente
-    if (typeof win.$gn !== 'undefined' && typeof win.$gn.ready === 'function') {
-      const activeAccountCode = efiPublicConfig?.accountCode || accountHash || '3931688641e8e06302526275df0fada3';
-      try {
-        win.$gn.setAccount(activeAccountCode);
-      } catch (err) {
-        console.error('[Efí SDK Utils] Erro ao chamar setAccount em SDK já pronto:', err);
-      }
-      safeResolve();
-      return;
+    if (win.EfiJs) {
+      return resolve();
     }
 
-    // Determine se é sandbox ou produção
-    const isSandboxEnv = efiPublicConfig
-      ? efiPublicConfig.isSandbox
-      : ((win.process?.env?.VITE_EFI_SANDBOX === 'true' || win.process?.env?.VITE_EFI_SANDBOX === true) || false);
+    const scriptId = 'efi-payment-token-script';
+    const cdnUrl = 'https://cdn.jsdelivr.net/gh/efipay/js-payment-token-efi/dist/payment-token-efi.min.js';
 
-    const activeAccountCode = efiPublicConfig?.accountCode || accountHash || '3931688641e8e06302526275df0fada3';
-
-    // 1ª Tentativa: Produção / 2ª Tentativa (Fallback): Sandbox
-    const urls = [
-      'https://api.gerencianet.com.br/v1/cdn',
-      'https://sandbox.gerencianet.com.br/v1/cdn'
-    ];
-
-    const tryLoad = (index: number) => {
-      if (index >= urls.length) {
-        console.error('[Efí Bank Utils] Todas as tentativas de baixar o SDK do Efí Bank falharam de forma crítica.');
-        safeReject(new Error('Falha ao baixar o script de segurança do Efí Bank'));
-        return;
-      }
-
-      const currentUrl = urls[index];
-      const scriptId = 'efi-payment-sdk';
-
-      // Remove script anterior caso exista
-      const existingScript = document.getElementById(scriptId);
-      if (existingScript) {
-        existingScript.remove();
-      }
-
-      console.log(`[Efí Bank Utils] Tentando baixar SDK do Efí Bank de: ${currentUrl}`);
-
-      const script = document.createElement('script');
+    let script = document.getElementById(scriptId) as HTMLScriptElement | null;
+    if (!script) {
+      script = document.createElement('script');
       script.id = scriptId;
       script.type = 'text/javascript';
       script.async = true;
-      script.src = currentUrl;
-
-      script.onload = () => {
-        console.log(`[Efí Bank Utils] SDK carregado com sucesso a partir de: ${currentUrl}`);
-        if (win.$gn) {
-          try {
-            win.$gn.setAccount(activeAccountCode);
-            console.log('[Efí SDK Utils] Chave Account Hash configurada com sucesso:', activeAccountCode);
-          } catch (err) {
-            console.error('[Efí SDK Utils] Erro ao chamar setAccount no onload do script carregado:', err);
-          }
-        }
-        safeResolve();
-      };
-
-      script.onerror = () => {
-        console.error('[Efí SDK] Erro de rede/CORS ao tentar baixar o script:', script.src);
-        // Tenta o próximo link de fallback da lista
-        tryLoad(index + 1);
-      };
-
+      script.src = cdnUrl;
       document.head.appendChild(script);
+    }
+
+    script.onload = () => {
+      if (win.EfiJs) {
+        console.log('[Efí SDK Utils] Biblioteca EfiJs carregada com sucesso!');
+        resolve();
+      } else {
+        reject(new Error('Biblioteca EfiJs não encontrada após carregar o script.'));
+      }
     };
 
-    tryLoad(0);
+    script.onerror = () => {
+      console.error('[Efí SDK Utils] Erro ao carregar biblioteca js-payment-token-efi');
+      reject(new Error('Falha ao baixar o script de segurança do Efí Bank'));
+    };
+
+    let attempts = 0;
+    const interval = setInterval(() => {
+      attempts++;
+      if (win.EfiJs) {
+        clearInterval(interval);
+        resolve();
+      } else if (attempts > 25) {
+        clearInterval(interval);
+        if (!win.EfiJs) {
+          reject(new Error('Não foi possível carregar o módulo de segurança da Efí Bank a tempo.'));
+        }
+      }
+    }, 300);
   });
 };
