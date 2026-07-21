@@ -48,76 +48,59 @@ export const loadEfiSdk = (
       ? efiPublicConfig.isSandbox
       : ((win.process?.env?.VITE_EFI_SANDBOX === 'true' || win.process?.env?.VITE_EFI_SANDBOX === true) || false);
 
-    const targetSrc = isSandboxEnv
-      ? 'https://sandbox.gerencianet.com.br/v1/cdn'
-      : 'https://api.gerencianet.com.br/v1/cdn';
-
-    const scriptId = 'efi-payment-sdk';
-    let script = document.getElementById(scriptId) as HTMLScriptElement | null;
-
     const activeAccountCode = efiPublicConfig?.accountCode || accountHash || '3931688641e8e06302526275df0fada3';
 
-    if (script) {
-      if (script.src === targetSrc) {
-        if (typeof win.$gn !== 'undefined' && typeof win.$gn.ready === 'function') {
+    // Lista de URLs ordenadas por preferência baseada no ambiente ativo
+    const urls = isSandboxEnv
+      ? ['https://sandbox.gerencianet.com.br/v1/cdn', 'https://api.gerencianet.com.br/v1/cdn']
+      : ['https://api.gerencianet.com.br/v1/cdn', 'https://sandbox.gerencianet.com.br/v1/cdn'];
+
+    const tryLoad = (index: number) => {
+      if (index >= urls.length) {
+        console.error('[Efí Bank Utils] Todas as tentativas de baixar o SDK do Efí Bank falharam de forma crítica.');
+        safeReject(new Error('Falha ao baixar o script de segurança do Efí Bank'));
+        return;
+      }
+
+      const currentUrl = urls[index];
+      const scriptId = 'efi-payment-sdk';
+
+      // Remove script anterior caso exista
+      const existingScript = document.getElementById(scriptId);
+      if (existingScript) {
+        existingScript.remove();
+      }
+
+      console.log(`[Efí Bank Utils] Tentando baixar SDK do Efí Bank de: ${currentUrl}`);
+
+      const script = document.createElement('script');
+      script.id = scriptId;
+      script.type = 'text/javascript';
+      script.async = true;
+      script.src = currentUrl;
+
+      script.onload = () => {
+        console.log(`[Efí Bank Utils] SDK carregado com sucesso a partir de: ${currentUrl}`);
+        if (win.$gn) {
           try {
             win.$gn.setAccount(activeAccountCode);
+            console.log('[Efí SDK Utils] Chave Account Hash configurada com sucesso:', activeAccountCode);
           } catch (err) {
-            console.error('[Efí SDK Utils] Erro ao configurar setAccount:', err);
+            console.error('[Efí SDK Utils] Erro ao chamar setAccount no onload do script carregado:', err);
           }
-          safeResolve();
-          return;
         }
+        safeResolve();
+      };
 
-        // Se o script já existe mas ainda está carregando, acopla no onload existente
-        const prevOnload = script.onload;
-        script.onload = (e) => {
-          if (prevOnload) (prevOnload as any)(e);
-          if (win.$gn) {
-            try {
-              win.$gn.setAccount(activeAccountCode);
-              console.log('[Efí SDK Utils] Chave Account Hash configurada via onload acoplado:', activeAccountCode);
-            } catch (err) {
-              console.error('[Efí SDK Utils] Erro ao configurar setAccount no onload:', err);
-            }
-          }
-          safeResolve();
-        };
-        script.onerror = () => {
-          safeReject(new Error('Falha ao baixar o script de segurança do Efí Bank'));
-        };
-        return;
-      } else {
-        // Remove script de ambiente incorreto
-        script.remove();
-      }
-    }
+      script.onerror = (err) => {
+        console.error(`[Efí Bank Utils] Falha de download na URL: ${currentUrl}`, err);
+        // Tenta o próximo link de fallback da lista
+        tryLoad(index + 1);
+      };
 
-    // Cria e insere o script dinamicamente
-    const newScript = document.createElement('script');
-    newScript.id = scriptId;
-    newScript.type = 'text/javascript';
-    newScript.src = targetSrc;
-    newScript.async = true;
-
-    newScript.onload = () => {
-      console.log(`[Efí Bank Utils] SDK carregado com sucesso (${isSandboxEnv ? 'Sandbox' : 'Produção'})`);
-      if (win.$gn) {
-        try {
-          win.$gn.setAccount(activeAccountCode);
-          console.log('[Efí SDK Utils] Chave Account Hash configurada:', activeAccountCode);
-        } catch (err) {
-          console.error('[Efí SDK Utils] Erro ao chamar setAccount no onload:', err);
-        }
-      }
-      safeResolve();
+      document.head.appendChild(script);
     };
 
-    newScript.onerror = (err) => {
-      console.error('[Efí Bank Utils] Erro crítico ao baixar script do SDK:', err);
-      safeReject(new Error('Falha ao baixar o script de segurança do Efí Bank'));
-    };
-
-    document.head.appendChild(newScript);
+    tryLoad(0);
   });
 };
