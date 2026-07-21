@@ -1425,8 +1425,14 @@ app.post('/api/location', (req, res) => {
 // Efí Bank Integration Endpoints
 app.get('/api/payment/efi/config', (req, res) => {
   const config = getEfiConfig();
+  const accountCode = process.env.EFI_ACCOUNT_CODE || '';
+  const hasCardConfig = !!(config && accountCode);
+  const hasPixConfig = !!(config && config.pixKey && (config.certBase64 || config.certPath));
+
   res.json({
-    isConfigured: !!config,
+    isConfigured: hasCardConfig || hasPixConfig,
+    hasCardConfig,
+    hasPixConfig,
     isSandbox: config ? config.isSandbox : true,
     pixKey: config ? config.pixKey : null
   });
@@ -1435,11 +1441,18 @@ app.get('/api/payment/efi/config', (req, res) => {
 // Public Efí Configuration for the client-side
 app.get('/api/payment/efi/public-config', (req, res) => {
   const config = getEfiConfig();
+  const accountCode = process.env.EFI_ACCOUNT_CODE || '';
+  
+  const hasCardConfig = !!(config && accountCode);
+  const hasPixConfig = !!(config && config.pixKey && (config.certBase64 || config.certPath));
+
   res.json({
     isSandbox: config ? config.isSandbox : true,
-    accountCode: process.env.EFI_ACCOUNT_CODE || '',
-    hasConfig: !!config,
-    pixKey: config ? `${config.pixKey.substring(0, 3)}***${config.pixKey.substring(config.pixKey.indexOf('@') > -1 ? config.pixKey.indexOf('@') : Math.max(3, config.pixKey.length - 3))}` : ''
+    accountCode,
+    hasConfig: hasCardConfig || hasPixConfig,
+    hasCardConfig,
+    hasPixConfig,
+    pixKey: config && config.pixKey ? `${config.pixKey.substring(0, 3)}***${config.pixKey.substring(config.pixKey.indexOf('@') > -1 ? config.pixKey.indexOf('@') : Math.max(3, config.pixKey.length - 3))}` : ''
   });
 });
 

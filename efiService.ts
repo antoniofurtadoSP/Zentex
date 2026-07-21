@@ -8,7 +8,7 @@ import tls from 'tls';
 export interface EfiConfig {
   clientId: string;
   clientSecret: string;
-  pixKey: string;
+  pixKey?: string; // Path/Value to Pix Key
   certPath?: string; // Path to .p12 certificate file
   certBase64?: string; // Base64 encoded .p12 certificate
   certPassword?: string; // Optional password for .p12
@@ -18,7 +18,7 @@ export interface EfiConfig {
 export function getEfiConfig(): EfiConfig | null {
   const clientId = process.env.EFI_CLIENT_ID;
   const clientSecret = process.env.EFI_CLIENT_SECRET;
-  const pixKey = process.env.EFI_PIX_KEY;
+  const pixKey = process.env.EFI_PIX_KEY || '';
   const certPath = process.env.EFI_CERT_PATH;
   const certBase64 = process.env.EFI_CERT_BASE64;
   let certPassword = process.env.EFI_CERT_PASSWORD || '';
@@ -26,7 +26,7 @@ export function getEfiConfig(): EfiConfig | null {
     certPassword = '';
   }
 
-  if (!clientId || !clientSecret || !pixKey) {
+  if (!clientId || !clientSecret) {
     return null;
   }
 
@@ -235,6 +235,10 @@ export async function createPixPayment(amount: number, orderId: string, clientNa
   const config = getEfiConfig();
   if (!config) {
     throw new Error('EFI_CREDENTIALS_MISSING');
+  }
+
+  if (!config.pixKey) {
+    throw new Error('Chave Pix da Efí Bank (EFI_PIX_KEY) não está configurada nas variáveis de ambiente do seu servidor.');
   }
 
   const token = await getPixAccessToken(config);

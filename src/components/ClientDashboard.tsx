@@ -181,7 +181,15 @@ export default function ClientDashboard({
   const [checkoutSuccess, setCheckoutSuccess] = useState(false);
   const [sandboxSimulation, setSandboxSimulation] = useState<'approved' | 'declined'>('approved');
 
-  const [efiPublicConfig, setEfiPublicConfig] = useState<{ isSandbox: boolean; hasConfig: boolean; accountCode: string; pixKey: string } | null>(null);
+  const [efiPublicConfig, setEfiPublicConfig] = useState<{
+    isSandbox: boolean;
+    hasConfig: boolean;
+    hasCardConfig?: boolean;
+    hasPixConfig?: boolean;
+    accountCode: string;
+    pixKey: string;
+  } | null>(null);
+  const [efiSdkStatus, setEfiSdkStatus] = useState<'idle' | 'loading' | 'loaded' | 'failed' | 'missing_config'>('idle');
 
   useEffect(() => {
     fetch('/api/payment/efi/public-config')
@@ -191,29 +199,78 @@ export default function ClientDashboard({
   }, []);
 
   useEffect(() => {
-    if (efiPublicConfig?.hasConfig && efiPublicConfig?.accountCode) {
-      const scriptId = 'efi-payment-sdk';
-      if (!document.getElementById(scriptId)) {
-        const script = document.createElement('script');
-        script.id = scriptId;
-        script.type = 'text/javascript';
-        script.src = efiPublicConfig.isSandbox
-          ? 'https://sandbox.gerencianet.com.br/v1/cdn'
-          : 'https://api.gerencianet.com.br/v1/cdn';
-        script.async = true;
-        
-        (window as any).$gn = [];
-        (window as any).$gn.push(['AccountCode', efiPublicConfig.accountCode]);
-        
-        script.onload = () => {
-          console.log('Efí Bank Payment SDK carregado com sucesso!');
-        };
-        script.onerror = () => {
-          console.error('Erro ao carregar o SDK de Pagamento da Efí Bank.');
-        };
-        document.body.appendChild(script);
-      }
+    if (!efiPublicConfig) return;
+
+    const isCardConfigured = efiPublicConfig.hasCardConfig ?? efiPublicConfig.hasConfig;
+
+    if (!isCardConfigured || !efiPublicConfig.accountCode) {
+      setEfiSdkStatus('missing_config');
+      return;
     }
+
+    const scriptId = 'efi-payment-sdk';
+    const existingScript = document.getElementById(scriptId);
+
+    if (existingScript) {
+      const gn = (window as any).$gn;
+      if (gn && typeof gn.ready === 'function') {
+        setEfiSdkStatus('loaded');
+      } else {
+        setEfiSdkStatus('loading');
+        const checkInterval = setInterval(() => {
+          const currentGn = (window as any).$gn;
+          if (currentGn && typeof currentGn.ready === 'function') {
+            setEfiSdkStatus('loaded');
+            clearInterval(checkInterval);
+          }
+        }, 500);
+        setTimeout(() => clearInterval(checkInterval), 5000);
+      }
+      return;
+    }
+
+    setEfiSdkStatus('loading');
+    const script = document.createElement('script');
+    script.id = scriptId;
+    script.type = 'text/javascript';
+    script.src = efiPublicConfig.isSandbox
+      ? 'https://sandbox.gerencianet.com.br/v1/cdn'
+      : 'https://api.gerencianet.com.br/v1/cdn';
+    script.async = true;
+    
+    (window as any).$gn = [];
+    (window as any).$gn.push(['AccountCode', efiPublicConfig.accountCode]);
+    
+    script.onload = () => {
+      console.log('Efí Bank Payment SDK carregado com sucesso!');
+      setTimeout(() => {
+        const gn = (window as any).$gn;
+        if (gn && typeof gn.ready === 'function') {
+          setEfiSdkStatus('loaded');
+        } else {
+          setEfiSdkStatus('loading');
+          let attempts = 0;
+          const poll = setInterval(() => {
+            attempts++;
+            const activeGn = (window as any).$gn;
+            if (activeGn && typeof activeGn.ready === 'function') {
+              setEfiSdkStatus('loaded');
+              clearInterval(poll);
+            } else if (attempts > 12) {
+              setEfiSdkStatus('failed');
+              clearInterval(poll);
+            }
+          }, 300);
+        }
+      }, 200);
+    };
+
+    script.onerror = () => {
+      console.error('Erro ao carregar o SDK de Pagamento da Efí Bank.');
+      setEfiSdkStatus('failed');
+    };
+
+    document.body.appendChild(script);
   }, [efiPublicConfig]);
 
   const detectCardBrand = (number: string): string => {
@@ -2127,6 +2184,43 @@ export default function ClientDashboard({
                       {checkoutMethod === 'card' && (
                         <form onSubmit={handleConfirmCardPayment} className="space-y-3 text-left">
                           
+                          {efiSdkStatus === 'missing_config' && (
+                            <div className="bg-amber-50 border border-amber-200 p-3.5 rounded-2xl text-left space-y-1.5 animate-fade-in">
+                              <span className="text-amber-800 font-extrabold text-[10px] uppercase tracking-wider block">⚠️ Configuração de Cartão Pendente</span>
+                              <p className="text-[10px] text-amber-700 leading-relaxed font-medium">
+                                O <strong>Identificador de Conta</strong> da Efí Bank (<code>EFI_ACCOUNT_CODE</code>) não está configurado nas variáveis de ambiente do seu servidor.
+                              </p>
+                              <p className="text-[9px] text-amber-600 leading-normal">
+                                Para habilitar pagamentos reais com cartão de crédito, o proprietário deve cadastrar a credencial <strong>EFI_ACCOUNT_CODE</strong> nas configurações/segredos do painel do AI Studio ou do servidor de hospedagem.
+                              </p>
+                            </div>
+                          )}
+
+                          {efiSdkStatus === 'failed' && (
+                            <div className="bg-rose-50 border border-rose-200 p-3.5 rounded-2xl text-left space-y-1.5 animate-fade-in">
+                              <span className="text-rose-800 font-extrabold text-[10px] uppercase tracking-wider block">⚠️ Bloqueio ou Erro de Carregamento</span>
+                              <p className="text-[10px] text-rose-700 leading-relaxed font-medium">
+                                Não foi possível carregar o módulo de segurança de criptografia de cartão da Efí Bank no seu navegador.
+                              </p>
+                              <p className="text-[9px] text-rose-600 leading-normal">
+                                <strong>Possíveis causas:</strong> Bloqueadores de anúncios ativos (AdBlock), restrições de segurança do iframe do Google AI Studio, ou oscilações na rede da Efí.
+                              </p>
+                              <p className="text-[9px] text-indigo-700 leading-normal font-semibold">
+                                👉 <strong>Como resolver:</strong> Desative o seu AdBlock para esta página, ou abra o aplicativo em uma nova aba fora do AI Studio (clicando no botão de seta no canto superior direito do preview) e tente novamente, ou utilize o pagamento Pix.
+                              </p>
+                            </div>
+                          )}
+
+                          {efiSdkStatus === 'loading' && (
+                            <div className="bg-blue-50 border border-blue-200 p-3.5 rounded-2xl text-left flex items-center gap-2.5 animate-pulse">
+                              <span className="w-4 h-4 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin shrink-0"></span>
+                              <div className="space-y-0.5">
+                                <span className="text-indigo-800 font-bold text-[10px] uppercase tracking-wider block">Iniciando SDK de Segurança</span>
+                                <p className="text-[9px] text-indigo-650 leading-normal font-medium">Verificando criptografia SSL ponta-a-ponta com a Efí Bank...</p>
+                              </div>
+                            </div>
+                          )}
+
                           {checkoutError && (
                             <div className="bg-rose-50 border border-rose-200 p-4 rounded-2xl space-y-2 text-left animate-fade-in">
                               <span className="text-rose-700 font-extrabold text-[10px] uppercase tracking-wider block">Erro no Pagamento</span>
