@@ -209,7 +209,9 @@ export default function ClientDashboard({
 
     if (win.$gn) {
       try {
-        win.$gn.setAccount(activeAccountCode);
+        if (typeof win.$gn.setAccount === 'function') {
+          win.$gn.setAccount(activeAccountCode);
+        }
         console.log('[Efí SDK] Módulo pré-carregado com sucesso no mounting!');
         setIsSdkReady(true);
         setEfiSdkStatus('loaded');
@@ -219,20 +221,30 @@ export default function ClientDashboard({
       return;
     }
 
-    const scriptId = 'efi-sdk-script';
+    const isSandboxEnv = efiPublicConfig
+      ? efiPublicConfig.isSandbox
+      : ((import.meta as any).env.VITE_EFI_SANDBOX === 'true' || (import.meta as any).env.VITE_EFI_SANDBOX === true);
+
+    const urls = isSandboxEnv
+      ? ['https://sandbox.gerencianet.com.br/v1/cdn', 'https://api.gerencianet.com.br/v1/cdn']
+      : ['https://api.gerencianet.com.br/v1/cdn', 'https://sandbox.gerencianet.com.br/v1/cdn'];
+
+    let scriptId = 'efi-sdk-script';
     let script = document.getElementById(scriptId) as HTMLScriptElement | null;
 
     if (!script) {
       setEfiSdkStatus('loading');
       script = document.createElement('script');
       script.id = scriptId;
-      script.src = 'https://api.gerencianet.com.br/v1/cdn';
+      script.src = urls[0];
       script.type = 'text/javascript';
       script.async = true;
       script.onload = () => {
         if (win.$gn) {
           try {
-            win.$gn.setAccount(activeAccountCode);
+            if (typeof win.$gn.setAccount === 'function') {
+              win.$gn.setAccount(activeAccountCode);
+            }
             console.log('[Efí SDK] Módulo pré-carregado com sucesso no mounting!');
             setIsSdkReady(true);
             setEfiSdkStatus('loaded');
@@ -242,26 +254,17 @@ export default function ClientDashboard({
         }
       };
       script.onerror = () => {
-        console.error('[Efí SDK] Erro de rede ao tentar carregar o CDN do Efí Bank.');
-        setIsSdkReady(false);
-        setEfiSdkStatus('failed');
-      };
-      document.head.appendChild(script);
-    } else {
-      const prevOnload = script.onload;
-      script.onload = (e) => {
-        if (prevOnload) (prevOnload as any)(e);
-        if (win.$gn) {
-          try {
-            win.$gn.setAccount(activeAccountCode);
-            console.log('[Efí SDK] Módulo pré-carregado com sucesso no mounting!');
-            setIsSdkReady(true);
-            setEfiSdkStatus('loaded');
-          } catch (err) {
-            console.error('[Efí SDK] Erro ao configurar setAccount no onload:', err);
-          }
+        console.warn(`[Efí SDK] Falha ao carregar CDN principal (${urls[0]}), tentando fallback (${urls[1]})...`);
+        if (script) {
+          script.src = urls[1];
+          script.onerror = () => {
+            console.error('[Efí SDK] Erro de rede ao tentar carregar todos os CDNs do Efí Bank.');
+            setIsSdkReady(false);
+            setEfiSdkStatus('failed');
+          };
         }
       };
+      document.head.appendChild(script);
     }
   }, [efiPublicConfig]);
 
@@ -272,7 +275,9 @@ export default function ClientDashboard({
 
       if (win.$gn) {
         try {
-          win.$gn.setAccount(activeAccountCode);
+          if (typeof win.$gn.setAccount === 'function') {
+            win.$gn.setAccount(activeAccountCode);
+          }
           console.log('[Efí SDK] Módulo validado instantaneamente no submit!');
           setIsSdkReady(true);
           setEfiSdkStatus('loaded');
@@ -282,14 +287,49 @@ export default function ClientDashboard({
         return resolve(win.$gn);
       }
 
+      const isSandboxEnv = efiPublicConfig
+        ? efiPublicConfig.isSandbox
+        : ((import.meta as any).env.VITE_EFI_SANDBOX === 'true' || (import.meta as any).env.VITE_EFI_SANDBOX === true);
+
+      const urls = isSandboxEnv
+        ? ['https://sandbox.gerencianet.com.br/v1/cdn', 'https://api.gerencianet.com.br/v1/cdn']
+        : ['https://api.gerencianet.com.br/v1/cdn', 'https://sandbox.gerencianet.com.br/v1/cdn'];
+
       let script = document.getElementById('efi-sdk-script') as HTMLScriptElement | null;
       if (!script) {
         setEfiSdkStatus('loading');
         script = document.createElement('script');
         script.id = 'efi-sdk-script';
-        script.src = 'https://api.gerencianet.com.br/v1/cdn';
+        script.src = urls[0];
         script.type = 'text/javascript';
         script.async = true;
+
+        script.onload = () => {
+          if (win.$gn) {
+            try {
+              if (typeof win.$gn.setAccount === 'function') {
+                win.$gn.setAccount(activeAccountCode);
+              }
+              setIsSdkReady(true);
+              setEfiSdkStatus('loaded');
+            } catch (e) {
+              console.error('[Efí SDK] Erro no setAccount no onload:', e);
+            }
+            resolve(win.$gn);
+          }
+        };
+
+        script.onerror = () => {
+          console.warn(`[Efí SDK] Erro no primeiro CDN (${urls[0]}), tentando fallback (${urls[1]})...`);
+          if (script) {
+            script.src = urls[1];
+            script.onerror = () => {
+              setEfiSdkStatus('failed');
+              reject(new Error('Erro de rede ao carregar o módulo de segurança da Efí Bank.'));
+            };
+          }
+        };
+
         document.head.appendChild(script);
       }
 
@@ -299,15 +339,17 @@ export default function ClientDashboard({
         if (win.$gn) {
           clearInterval(interval);
           try {
-            win.$gn.setAccount(activeAccountCode);
-            console.log('[Efí SDK] Módulo carregado em segundo plano!');
+            if (typeof win.$gn.setAccount === 'function') {
+              win.$gn.setAccount(activeAccountCode);
+            }
+            console.log('[Efí SDK] Módulo verificado e pronto!');
             setIsSdkReady(true);
             setEfiSdkStatus('loaded');
           } catch (e) {
             console.error('[Efí SDK] Erro ao configurar setAccount:', e);
           }
           resolve(win.$gn);
-        } else if (attempts > 26) { // ~8 segundos de timeout
+        } else if (attempts > 15) { // 4.5s
           clearInterval(interval);
           setEfiSdkStatus('failed');
           reject(new Error('Não foi possível carregar o módulo de segurança da Efí Bank a tempo.'));
@@ -343,11 +385,12 @@ export default function ClientDashboard({
     try {
       efiSdk = await loadEfiSdk();
     } catch (err: any) {
-      console.error('[Efí SDK] Falha no auto-loader do SDK:', err);
-      if (!isSandbox) {
-        throw new Error(err.message || 'Não foi possível carregar o módulo de segurança da Efí Bank a tempo.');
-      } else {
+      console.warn('[Efí SDK] Não foi possível carregar o CDN do Efí Bank:', err?.message);
+      if (isSandbox) {
+        console.log('[Efí SDK] Modo Sandbox ativo: gerando token de simulação de desenvolvimento.');
         return 'token_simulado_desenvolvedor';
+      } else {
+        throw new Error('Não foi possível carregar o módulo de segurança da Efí Bank. Verifique sua conexão com a internet ou se há bloqueadores de anúncios ativados.');
       }
     }
 
