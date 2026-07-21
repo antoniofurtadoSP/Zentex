@@ -126,11 +126,14 @@ export default function ZentexAuth({
 
         <form onSubmit={handleChangePasswordSubmit} className="space-y-4">
           <div>
-            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Nova Senha</label>
+            <label htmlFor="newPasswordInput" className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Nova Senha</label>
             <div className="relative mt-1">
               <input
+                id="newPasswordInput"
+                name="newPassword"
                 type={showPassword ? 'text' : 'password'}
                 required
+                autoComplete="new-password"
                 placeholder="Mínimo 6 caracteres"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
@@ -148,11 +151,14 @@ export default function ZentexAuth({
           </div>
 
           <div>
-            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Confirmar Nova Senha</label>
+            <label htmlFor="confirmNewPasswordInput" className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Confirmar Nova Senha</label>
             <div className="relative mt-1">
               <input
+                id="confirmNewPasswordInput"
+                name="confirmNewPassword"
                 type={showPassword ? 'text' : 'password'}
                 required
+                autoComplete="new-password"
                 placeholder="Repita a nova senha"
                 value={confirmNewPassword}
                 onChange={(e) => setConfirmNewPassword(e.target.value)}
@@ -228,11 +234,14 @@ export default function ZentexAuth({
 
           <form onSubmit={handleLoginSubmit} className="space-y-4">
             <div>
-              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">E-mail</label>
+              <label htmlFor="authLoginEmail" className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">E-mail</label>
               <div className="relative mt-1">
                 <input
+                  id="authLoginEmail"
+                  name="authLoginEmail"
                   type="email"
                   required
+                  autoComplete="email"
                   placeholder="seuemail@exemplo.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -243,11 +252,14 @@ export default function ZentexAuth({
             </div>
 
             <div>
-              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Senha de Acesso</label>
+              <label htmlFor="authLoginPassword" className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Senha de Acesso</label>
               <div className="relative mt-1">
                 <input
+                  id="authLoginPassword"
+                  name="authLoginPassword"
                   type={showPassword ? 'text' : 'password'}
                   required
+                  autoComplete="current-password"
                   placeholder="Sua senha de acesso"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -329,11 +341,14 @@ export default function ZentexAuth({
 
           <form onSubmit={handleRegisterSubmit} className="space-y-3.5">
             <div>
-              <label className="text-[10px] font-bold text-slate-500 uppercase">Nome Completo *</label>
+              <label htmlFor="regNameInput" className="text-[10px] font-bold text-slate-500 uppercase">Nome Completo *</label>
               <div className="relative mt-1">
                 <input
+                  id="regNameInput"
+                  name="regName"
                   type="text"
                   required
+                  autoComplete="name"
                   placeholder="Ex: Banco Itaú, Residência Maria, etc."
                   value={regName}
                   onChange={(e) => setRegName(e.target.value)}
@@ -344,11 +359,14 @@ export default function ZentexAuth({
             </div>
 
             <div>
-              <label className="text-[10px] font-bold text-slate-500 uppercase">E-mail de Contato *</label>
+              <label htmlFor="regEmailInput" className="text-[10px] font-bold text-slate-500 uppercase">E-mail de Contato *</label>
               <div className="relative mt-1">
                 <input
+                  id="regEmailInput"
+                  name="regEmail"
                   type="email"
                   required
+                  autoComplete="email"
                   placeholder="Ex: cliente@empresa.com"
                   value={regEmail}
                   onChange={(e) => setRegEmail(e.target.value)}
@@ -359,11 +377,14 @@ export default function ZentexAuth({
             </div>
 
             <div>
-              <label className="text-[10px] font-bold text-slate-500 uppercase">WhatsApp / Celular *</label>
+              <label htmlFor="regPhoneInput" className="text-[10px] font-bold text-slate-500 uppercase">WhatsApp / Celular *</label>
               <div className="relative mt-1">
                 <input
+                  id="regPhoneInput"
+                  name="regPhone"
                   type="text"
                   required
+                  autoComplete="tel"
                   placeholder="Ex: (11) 99999-0000"
                   value={regPhone}
                   onChange={(e) => setRegPhone(e.target.value)}
@@ -374,11 +395,14 @@ export default function ZentexAuth({
             </div>
 
             <div>
-              <label className="text-[10px] font-bold text-slate-500 uppercase">CPF do Cliente *</label>
+              <label htmlFor="regDocumentInput" className="text-[10px] font-bold text-slate-500 uppercase">CPF do Cliente *</label>
               <div className="relative mt-1">
                 <input
+                  id="regDocumentInput"
+                  name="regDocument"
                   type="text"
                   required
+                  autoComplete="off"
                   placeholder="Ex: 123.456.789-00"
                   value={regDocumentId}
                   onChange={(e) => {
@@ -429,11 +453,14 @@ export default function ZentexAuth({
             </div>
 
             <div>
-              <label className="text-[10px] font-bold text-slate-500 uppercase">Endereço de Atendimento Padrão *</label>
+              <label htmlFor="regAddressInput" className="text-[10px] font-bold text-slate-500 uppercase">Endereço de Atendimento Padrão *</label>
               <div className="relative mt-1">
                 <input
+                  id="regAddressInput"
+                  name="regAddress"
                   type="text"
                   required
+                  autoComplete="street-address"
                   placeholder="Ex: Av. Paulista, 1000 - São Paulo - SP"
                   value={regAddress}
                   onChange={(e) => setRegAddress(e.target.value)}
@@ -444,11 +471,14 @@ export default function ZentexAuth({
             </div>
 
             <div>
-              <label className="text-[10px] font-bold text-slate-500 uppercase">Definir Senha de Acesso (Mínimo 6 dígitos) *</label>
+              <label htmlFor="regPasswordInput" className="text-[10px] font-bold text-slate-500 uppercase">Definir Senha de Acesso (Mínimo 6 dígitos) *</label>
               <div className="relative mt-1">
                 <input
+                  id="regPasswordInput"
+                  name="regPassword"
                   type={showPassword ? 'text' : 'password'}
                   required
+                  autoComplete="new-password"
                   placeholder="Escolha uma senha forte"
                   value={regPassword}
                   onChange={(e) => setRegPassword(e.target.value)}

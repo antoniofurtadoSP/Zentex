@@ -203,70 +203,18 @@ export default function ClientDashboard({
       .catch(err => console.error('Erro ao buscar configuração Efí:', err));
   }, []);
 
+  // Verificação de formulário de pagamento com cartão (Solicitação ou Modal de Pagamento)
+  const isCardPaymentActive = (selectedPayMethod === 'credit' || selectedPayMethod === 'debit') || (!!checkoutOrder && checkoutMethod === 'card');
+
+  // Carregamento Sob Demanda (Lazy Loading) do SDK da Efí Pay exclusivamente quando o formulário de cartão estiver ativo na tela
   useEffect(() => {
-    const win = window as any;
-    const activeAccountCode = efiPublicConfig?.accountCode || ACCOUNT_HASH || '3931688641e8e06302526275df0fada3';
+    if (!isCardPaymentActive) return;
 
-    if (win.$gn) {
-      try {
-        if (typeof win.$gn.setAccount === 'function') {
-          win.$gn.setAccount(activeAccountCode);
-        }
-        console.log('[Efí SDK] Módulo pré-carregado com sucesso no mounting!');
-        setIsSdkReady(true);
-        setEfiSdkStatus('loaded');
-      } catch (e) {
-        console.error('[Efí SDK] Erro ao chamar setAccount na carga:', e);
-      }
-      return;
-    }
-
-    const isSandboxEnv = efiPublicConfig
-      ? efiPublicConfig.isSandbox
-      : ((import.meta as any).env.VITE_EFI_SANDBOX === 'true' || (import.meta as any).env.VITE_EFI_SANDBOX === true);
-
-    const urls = isSandboxEnv
-      ? ['https://sandbox.gerencianet.com.br/v1/cdn', 'https://api.gerencianet.com.br/v1/cdn']
-      : ['https://api.gerencianet.com.br/v1/cdn', 'https://sandbox.gerencianet.com.br/v1/cdn'];
-
-    let scriptId = 'efi-sdk-script';
-    let script = document.getElementById(scriptId) as HTMLScriptElement | null;
-
-    if (!script) {
-      setEfiSdkStatus('loading');
-      script = document.createElement('script');
-      script.id = scriptId;
-      script.src = urls[0];
-      script.type = 'text/javascript';
-      script.async = true;
-      script.onload = () => {
-        if (win.$gn) {
-          try {
-            if (typeof win.$gn.setAccount === 'function') {
-              win.$gn.setAccount(activeAccountCode);
-            }
-            console.log('[Efí SDK] Módulo pré-carregado com sucesso no mounting!');
-            setIsSdkReady(true);
-            setEfiSdkStatus('loaded');
-          } catch (e) {
-            console.error('[Efí SDK] Erro ao chamar setAccount no onload:', e);
-          }
-        }
-      };
-      script.onerror = () => {
-        console.warn(`[Efí SDK] Falha ao carregar CDN principal (${urls[0]}), tentando fallback (${urls[1]})...`);
-        if (script) {
-          script.src = urls[1];
-          script.onerror = () => {
-            console.error('[Efí SDK] Erro de rede ao tentar carregar todos os CDNs do Efí Bank.');
-            setIsSdkReady(false);
-            setEfiSdkStatus('failed');
-          };
-        }
-      };
-      document.head.appendChild(script);
-    }
-  }, [efiPublicConfig]);
+    console.log('[Efí SDK] Formulário de cartão ativo: Carregando SDK sob demanda...');
+    loadEfiSdk().catch(err => {
+      console.warn('[Efí SDK] Erro ao carregar CDN do Efí Bank no carregamento sob demanda:', err);
+    });
+  }, [isCardPaymentActive, efiPublicConfig]);
 
   const loadEfiSdk = (): Promise<any> => {
     return new Promise((resolve, reject) => {
@@ -278,29 +226,42 @@ export default function ClientDashboard({
           if (typeof win.$gn.setAccount === 'function') {
             win.$gn.setAccount(activeAccountCode);
           }
-          console.log('[Efí SDK] Módulo validado instantaneamente no submit!');
+          console.log('[Efí SDK] Módulo validado instantaneamente!');
           setIsSdkReady(true);
           setEfiSdkStatus('loaded');
         } catch (e) {
-          console.error('[Efí SDK] Erro ao configurar setAccount no submit:', e);
+          console.error('[Efí SDK] Erro ao configurar setAccount:', e);
         }
         return resolve(win.$gn);
       }
 
       const isSandboxEnv = efiPublicConfig
-        ? efiPublicConfig.isSandbox
-        : ((import.meta as any).env.VITE_EFI_SANDBOX === 'true' || (import.meta as any).env.VITE_EFI_SANDBOX === true);
+        ? (efiPublicConfig.isSandbox || !efiPublicConfig.hasCardConfig)
+        : true;
 
       const urls = isSandboxEnv
         ? ['https://sandbox.gerencianet.com.br/v1/cdn', 'https://api.gerencianet.com.br/v1/cdn']
         : ['https://api.gerencianet.com.br/v1/cdn', 'https://sandbox.gerencianet.com.br/v1/cdn'];
 
-      let script = document.getElementById('efi-sdk-script') as HTMLScriptElement | null;
-      if (!script) {
-        setEfiSdkStatus('loading');
-        script = document.createElement('script');
-        script.id = 'efi-sdk-script';
-        script.src = urls[0];
+      setEfiSdkStatus('loading');
+
+      const tryLoadScript = (index: number) => {
+        if (index >= urls.length) {
+          setEfiSdkStatus('failed');
+          return reject(new Error('Não foi possível carregar o módulo de segurança da Efí Bank.'));
+        }
+
+        const currentUrl = urls[index];
+        const scriptId = 'efi-sdk-script';
+
+        const oldScript = document.getElementById(scriptId);
+        if (oldScript) {
+          oldScript.remove();
+        }
+
+        const script = document.createElement('script');
+        script.id = scriptId;
+        script.src = currentUrl;
         script.type = 'text/javascript';
         script.async = true;
 
@@ -320,17 +281,16 @@ export default function ClientDashboard({
         };
 
         script.onerror = () => {
-          console.warn(`[Efí SDK] Erro no primeiro CDN (${urls[0]}), tentando fallback (${urls[1]})...`);
-          if (script) {
-            script.src = urls[1];
-            script.onerror = () => {
-              setEfiSdkStatus('failed');
-              reject(new Error('Erro de rede ao carregar o módulo de segurança da Efí Bank.'));
-            };
-          }
+          console.warn(`[Efí SDK] Falha ao carregar CDN (${currentUrl}), tentando fallback se disponível...`);
+          tryLoadScript(index + 1);
         };
 
         document.head.appendChild(script);
+      };
+
+      const existingScript = document.getElementById('efi-sdk-script');
+      if (!existingScript) {
+        tryLoadScript(0);
       }
 
       let attempts = 0;
@@ -349,7 +309,7 @@ export default function ClientDashboard({
             console.error('[Efí SDK] Erro ao configurar setAccount:', e);
           }
           resolve(win.$gn);
-        } else if (attempts > 15) { // 4.5s
+        } else if (attempts > 25) { // 7.5s
           clearInterval(interval);
           setEfiSdkStatus('failed');
           reject(new Error('Não foi possível carregar o módulo de segurança da Efí Bank a tempo.'));
@@ -378,8 +338,8 @@ export default function ClientDashboard({
     expirationYear: string;
   }): Promise<string> => {
     const isSandbox = efiPublicConfig 
-      ? efiPublicConfig.isSandbox 
-      : ((import.meta as any).env.VITE_EFI_SANDBOX === 'true' || (import.meta as any).env.VITE_EFI_SANDBOX === true);
+      ? (efiPublicConfig.isSandbox || !efiPublicConfig.hasCardConfig) 
+      : true;
 
     let efiSdk: any = null;
     try {
@@ -387,7 +347,7 @@ export default function ClientDashboard({
     } catch (err: any) {
       console.warn('[Efí SDK] Não foi possível carregar o CDN do Efí Bank:', err?.message);
       if (isSandbox) {
-        console.log('[Efí SDK] Modo Sandbox ativo: gerando token de simulação de desenvolvimento.');
+        console.log('[Efí SDK] Modo Sandbox/Simulação ativo: gerando token de simulação de desenvolvimento.');
         return 'token_simulado_desenvolvedor';
       } else {
         throw new Error('Não foi possível carregar o módulo de segurança da Efí Bank. Verifique sua conexão com a internet ou se há bloqueadores de anúncios ativados.');
@@ -695,15 +655,7 @@ export default function ClientDashboard({
       const expirationMonth = expiryMonth.trim();
       const expirationYear = expiryYearShort ? `20${expiryYearShort.trim()}` : '';
 
-      // Auto-load Efí SDK via Auto-Loader promise before tokenizing
-      try {
-        await loadEfiSdk();
-      } catch (sdkErr: any) {
-        console.error('[Efí SDK] Erro ao carregar SDK no envio do formulário:', sdkErr);
-        throw new Error(sdkErr.message || 'Não foi possível carregar o módulo de segurança da Efí Bank a tempo.');
-      }
-
-      // 1. Tokenize card using Efí SDK (returns simulation token if SDK not loaded)
+      // 1. Tokenize card using Efí SDK (returns simulation token if SDK not loaded or sandbox)
       const cardToken = await getEfiCardToken({
         brand,
         number: checkoutCardNumber.replace(/\D/g, ''),
@@ -1057,14 +1009,6 @@ export default function ClientDashboard({
         const brand = detectCardBrand(cardNumber);
         const expirationMonth = expiryMonth.trim();
         const expirationYear = expiryYearShort ? `20${expiryYearShort.trim()}` : '';
-
-        // Auto-load Efí SDK via Auto-Loader promise before tokenizing
-        try {
-          await loadEfiSdk();
-        } catch (sdkErr: any) {
-          console.error('[Efí SDK] Erro ao carregar SDK no cadastro de ordem:', sdkErr);
-          throw new Error(sdkErr.message || 'Não foi possível carregar o módulo de segurança da Efí Bank a tempo.');
-        }
 
         // Generate card token via Efí SDK or Developer simulation
         const cardToken = await getEfiCardToken({
@@ -1539,9 +1483,12 @@ export default function ClientDashboard({
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
-                        <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider">Telefone / WhatsApp</label>
+                        <label htmlFor="servicePhone" className="text-[9px] font-black text-slate-500 uppercase tracking-wider">Telefone / WhatsApp</label>
                         <input
+                          id="servicePhone"
+                          name="servicePhone"
                           type="text"
+                          autoComplete="tel"
                           placeholder="Ex: (11) 99999-8888"
                           value={phone}
                           onChange={(e) => setPhone(e.target.value)}
@@ -1549,10 +1496,13 @@ export default function ClientDashboard({
                         />
                       </div>
                       <div>
-                        <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider">Endereço de Atendimento *</label>
+                        <label htmlFor="serviceAddress" className="text-[9px] font-black text-slate-500 uppercase tracking-wider">Endereço de Atendimento *</label>
                         <input
+                          id="serviceAddress"
+                          name="serviceAddress"
                           type="text"
                           required
+                          autoComplete="street-address"
                           placeholder="Endereço completo"
                           value={address}
                           onChange={(e) => setAddress(e.target.value)}
@@ -1712,59 +1662,89 @@ export default function ClientDashboard({
                                 </p>
                               </div>
                             )}
-                            <div className="grid grid-cols-1 gap-2">
-                              <input
-                                type="text"
-                                required
-                                placeholder="NOME IMPRESSO NO CARTÃO"
-                                value={cardName}
-                                onChange={(e) => setCardName(e.target.value.toUpperCase())}
-                                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-[10px] text-slate-800 focus:outline-none"
-                              />
-                              <input
-                                type="text"
-                                required
-                                maxLength={19}
-                                placeholder="NÚMERO DO CARTÃO"
-                                value={cardNumber}
-                                onChange={(e) => {
-                                  const raw = e.target.value.replace(/\D/g, '');
-                                  const formatted = raw.replace(/(\d{4})/g, '$1 ').trim();
-                                  setCardNumber(formatted);
-                                }}
-                                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-[10px] text-slate-800 focus:outline-none font-mono"
-                              />
-                              <div className="grid grid-cols-2 gap-2">
+                            <div className="grid grid-cols-1 gap-2.5">
+                              <div>
+                                <label htmlFor="cardHolderName" className="text-[9px] font-bold text-slate-500 uppercase block mb-0.5">Nome do Titular</label>
                                 <input
+                                  id="cardHolderName"
+                                  name="cardHolderName"
                                   type="text"
                                   required
-                                  maxLength={5}
-                                  placeholder="MM/AA"
-                                  value={cardExpiry}
+                                  autoComplete="cc-name"
+                                  placeholder="NOME IMPRESSO NO CARTÃO"
+                                  value={cardName}
+                                  onChange={(e) => setCardName(e.target.value.toUpperCase())}
+                                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-[10px] text-slate-800 focus:outline-none"
+                                />
+                              </div>
+                              <div>
+                                <label htmlFor="cardNumber" className="text-[9px] font-bold text-slate-500 uppercase block mb-0.5">Número do Cartão</label>
+                                <input
+                                  id="cardNumber"
+                                  name="cardNumber"
+                                  type="text"
+                                  required
+                                  autoComplete="cc-number"
+                                  maxLength={19}
+                                  placeholder="NÚMERO DO CARTÃO"
+                                  value={cardNumber}
                                   onChange={(e) => {
                                     const raw = e.target.value.replace(/\D/g, '');
-                                    setCardExpiry(raw.length >= 2 ? `${raw.slice(0, 2)}/${raw.slice(2, 4)}` : raw);
+                                    const formatted = raw.replace(/(\d{4})/g, '$1 ').trim();
+                                    setCardNumber(formatted);
                                   }}
                                   className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-[10px] text-slate-800 focus:outline-none font-mono"
                                 />
+                              </div>
+                              <div className="grid grid-cols-2 gap-2">
+                                <div>
+                                  <label htmlFor="cardExpiration" className="text-[9px] font-bold text-slate-500 uppercase block mb-0.5">Validade</label>
+                                  <input
+                                    id="cardExpiration"
+                                    name="cardExpiration"
+                                    type="text"
+                                    required
+                                    autoComplete="cc-exp"
+                                    maxLength={5}
+                                    placeholder="MM/AA"
+                                    value={cardExpiry}
+                                    onChange={(e) => {
+                                      const raw = e.target.value.replace(/\D/g, '');
+                                      setCardExpiry(raw.length >= 2 ? `${raw.slice(0, 2)}/${raw.slice(2, 4)}` : raw);
+                                    }}
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-[10px] text-slate-800 focus:outline-none font-mono"
+                                  />
+                                </div>
+                                <div>
+                                  <label htmlFor="cardCvv" className="text-[9px] font-bold text-slate-500 uppercase block mb-0.5">CVV</label>
+                                  <input
+                                    id="cardCvv"
+                                    name="cardCvv"
+                                    type="password"
+                                    required
+                                    autoComplete="cc-csc"
+                                    maxLength={3}
+                                    placeholder="CVV"
+                                    value={cardCVV}
+                                    onChange={(e) => setCardCVV(e.target.value.replace(/\D/g, ''))}
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-[10px] text-slate-800 focus:outline-none font-mono"
+                                  />
+                                </div>
+                              </div>
+                              <div>
+                                <label htmlFor="docNumber" className="text-[9px] font-bold text-slate-500 uppercase block mb-0.5">CPF / CNPJ do Titular</label>
                                 <input
-                                  type="password"
+                                  id="docNumber"
+                                  name="docNumber"
+                                  type="text"
                                   required
-                                  maxLength={3}
-                                  placeholder="CVV"
-                                  value={cardCVV}
-                                  onChange={(e) => setCardCVV(e.target.value.replace(/\D/g, ''))}
+                                  autoComplete="off"
+                                  placeholder="CPF OU CNPJ DO TITULAR DO CARTÃO"
+                                  value={cardCpf}
+                                  onChange={(e) => setCardCpf(e.target.value)}
                                   className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-[10px] text-slate-800 focus:outline-none font-mono"
                                 />
                               </div>
-                              <input
-                                type="text"
-                                required
-                                placeholder="CPF OU CNPJ DO TITULAR DO CARTÃO"
-                                value={cardCpf}
-                                onChange={(e) => setCardCpf(e.target.value)}
-                                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-[10px] text-slate-800 focus:outline-none font-mono"
-                              />
                             </div>
                           </div>
                         )}
@@ -2497,10 +2477,13 @@ export default function ClientDashboard({
                           )}
 
                           <div>
-                            <label className="text-[10px] font-bold text-slate-500 uppercase">Nome do Titular (conforme cartão)</label>
+                            <label htmlFor="checkoutCardHolderName" className="text-[10px] font-bold text-slate-500 uppercase">Nome do Titular (conforme cartão)</label>
                             <input
+                              id="checkoutCardHolderName"
+                              name="cardHolderName"
                               type="text"
                               required
+                              autoComplete="cc-name"
                               placeholder="Ex: JOAO S SILVA"
                               value={checkoutCardName}
                               onChange={(e) => setCheckoutCardName(e.target.value.toUpperCase())}
@@ -2509,11 +2492,14 @@ export default function ClientDashboard({
                           </div>
 
                           <div>
-                            <label className="text-[10px] font-bold text-slate-500 uppercase">Número do Cartão</label>
+                            <label htmlFor="checkoutCardNumber" className="text-[10px] font-bold text-slate-500 uppercase">Número do Cartão</label>
                             <div className="relative mt-1">
                               <input
+                                id="checkoutCardNumber"
+                                name="cardNumber"
                                 type="text"
                                 required
+                                autoComplete="cc-number"
                                 placeholder="0000 0000 0000 0000"
                                 maxLength={19}
                                 value={checkoutCardNumber}
@@ -2526,10 +2512,13 @@ export default function ClientDashboard({
 
                           <div className="grid grid-cols-2 gap-3">
                             <div>
-                              <label className="text-[10px] font-bold text-slate-500 uppercase">Validade (MM/AA)</label>
+                              <label htmlFor="checkoutCardExpiration" className="text-[10px] font-bold text-slate-500 uppercase">Validade (MM/AA)</label>
                               <input
+                                id="checkoutCardExpiration"
+                                name="cardExpiration"
                                 type="text"
                                 required
+                                autoComplete="cc-exp"
                                 placeholder="Ex: 12/29"
                                 maxLength={5}
                                 value={checkoutCardExpiry}
@@ -2542,10 +2531,13 @@ export default function ClientDashboard({
                               />
                             </div>
                             <div>
-                              <label className="text-[10px] font-bold text-slate-500 uppercase">CVC / Código de Segurança</label>
+                              <label htmlFor="checkoutCardCvv" className="text-[10px] font-bold text-slate-500 uppercase">CVC / Código de Segurança</label>
                               <input
+                                id="checkoutCardCvv"
+                                name="cardCvv"
                                 type="password"
                                 required
+                                autoComplete="cc-csc"
                                 maxLength={4}
                                 placeholder="Ex: 123"
                                 value={checkoutCardCVV}
@@ -2557,10 +2549,13 @@ export default function ClientDashboard({
 
                           <div className="grid grid-cols-2 gap-3">
                             <div>
-                              <label className="text-[10px] font-bold text-slate-500 uppercase">CPF / CNPJ do Titular</label>
+                              <label htmlFor="checkoutDocNumber" className="text-[10px] font-bold text-slate-500 uppercase">CPF / CNPJ do Titular</label>
                               <input
+                                id="checkoutDocNumber"
+                                name="docNumber"
                                 type="text"
                                 required
+                                autoComplete="off"
                                 placeholder="Ex: 000.000.000-00"
                                 value={checkoutCardCpf}
                                 onChange={(e) => setCheckoutCardCpf(e.target.value)}
@@ -2568,10 +2563,13 @@ export default function ClientDashboard({
                               />
                             </div>
                             <div>
-                              <label className="text-[10px] font-bold text-slate-500 uppercase">E-mail para Recibo</label>
+                              <label htmlFor="checkoutReceiptEmail" className="text-[10px] font-bold text-slate-500 uppercase">E-mail para Recibo</label>
                               <input
+                                id="checkoutReceiptEmail"
+                                name="receiptEmail"
                                 type="email"
                                 required
+                                autoComplete="email"
                                 placeholder="Ex: joao@email.com"
                                 value={checkoutCardEmail}
                                 onChange={(e) => setCheckoutCardEmail(e.target.value)}
@@ -2875,10 +2873,13 @@ export default function ClientDashboard({
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="text-[10px] font-bold text-slate-500 uppercase">Nome Completo *</label>
+                <label htmlFor="profileFullName" className="text-[10px] font-bold text-slate-500 uppercase">Nome Completo *</label>
                 <input
+                  id="profileFullName"
+                  name="profileFullName"
                   type="text"
                   required
+                  autoComplete="name"
                   value={profileName}
                   onChange={(e) => setProfileName(e.target.value)}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 mt-1 focus:outline-none focus:border-emerald-500 focus:bg-white transition-all shadow-inner"
@@ -2886,10 +2887,13 @@ export default function ClientDashboard({
               </div>
 
               <div>
-                <label className="text-[10px] font-bold text-slate-500 uppercase">E-mail (Login)</label>
+                <label htmlFor="profileEmail" className="text-[10px] font-bold text-slate-500 uppercase">E-mail (Login)</label>
                 <input
+                  id="profileEmail"
+                  name="profileEmail"
                   type="email"
                   disabled
+                  autoComplete="email"
                   value={currentUser.email}
                   className="w-full bg-slate-100 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-400 mt-1 font-mono focus:outline-none"
                   title="Não é possível alterar o e-mail de acesso."
@@ -2897,10 +2901,13 @@ export default function ClientDashboard({
               </div>
 
               <div>
-                <label className="text-[10px] font-bold text-slate-500 uppercase">Celular / WhatsApp *</label>
+                <label htmlFor="profilePhone" className="text-[10px] font-bold text-slate-500 uppercase">Celular / WhatsApp *</label>
                 <input
+                  id="profilePhone"
+                  name="profilePhone"
                   type="text"
                   required
+                  autoComplete="tel"
                   placeholder="Ex: (11) 99999-8888"
                   value={profilePhone}
                   onChange={(e) => setProfilePhone(e.target.value)}
@@ -2909,8 +2916,10 @@ export default function ClientDashboard({
               </div>
 
               <div>
-                <label className="text-[10px] font-bold text-slate-500 uppercase">Foto do Perfil (URL)</label>
+                <label htmlFor="profileAvatar" className="text-[10px] font-bold text-slate-500 uppercase">Foto do Perfil (URL)</label>
                 <input
+                  id="profileAvatar"
+                  name="profileAvatar"
                   type="text"
                   placeholder="URL da foto..."
                   value={profileAvatar}
@@ -2920,10 +2929,13 @@ export default function ClientDashboard({
               </div>
 
               <div className="sm:col-span-2">
-                <label className="text-[10px] font-bold text-slate-500 uppercase">Endereço Residencial / Corporativo Principal *</label>
+                <label htmlFor="profileAddress" className="text-[10px] font-bold text-slate-500 uppercase">Endereço Residencial / Corporativo Principal *</label>
                 <input
+                  id="profileAddress"
+                  name="profileAddress"
                   type="text"
                   required
+                  autoComplete="street-address"
                   placeholder="Ex: Alameda Lorena, 1200 - Jardins, São Paulo - SP"
                   value={profileAddress}
                   onChange={(e) => setProfileAddress(e.target.value)}

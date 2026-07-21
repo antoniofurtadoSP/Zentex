@@ -403,6 +403,9 @@ export default function ZentexChat({ currentUser, users, messages, onSendMessage
         {/* Input Panel */}
         <form onSubmit={handleSend} className="p-4 bg-slate-50 border-t border-slate-200 flex gap-2">
           <input
+            id="chatMessageInput"
+            name="chatMessage"
+            aria-label="Mensagem do chat"
             type="text"
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}

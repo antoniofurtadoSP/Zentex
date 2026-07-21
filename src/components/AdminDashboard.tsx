@@ -1250,8 +1250,10 @@ export default function AdminDashboard({
             <form onSubmit={handleCreateOSSubmit} className="p-5 space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="sm:col-span-2">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase">Título da OS *</label>
+                  <label htmlFor="adminOsTitle" className="text-[10px] font-bold text-slate-500 uppercase">Título da OS *</label>
                   <input
+                    id="adminOsTitle"
+                    name="adminOsTitle"
                     type="text"
                     required
                     placeholder="Ex: Manutenção Preventiva do Ar Condicionado"
@@ -1262,8 +1264,10 @@ export default function AdminDashboard({
                 </div>
 
                 <div className="sm:col-span-2">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase">Descrição da OS</label>
+                  <label htmlFor="adminOsDescription" className="text-[10px] font-bold text-slate-500 uppercase">Descrição da OS</label>
                   <textarea
+                    id="adminOsDescription"
+                    name="adminOsDescription"
                     rows={2}
                     placeholder="Descreva as tarefas e o problema relatado..."
                     value={osDescription}
@@ -1273,8 +1277,10 @@ export default function AdminDashboard({
                 </div>
 
                 <div>
-                  <label className="text-[10px] font-bold text-slate-500 uppercase">Cliente *</label>
+                  <label htmlFor="adminOsClientName" className="text-[10px] font-bold text-slate-500 uppercase">Cliente *</label>
                   <input
+                    id="adminOsClientName"
+                    name="adminOsClientName"
                     type="text"
                     required
                     placeholder="Ex: Banco Itaú Paulista"
@@ -1285,9 +1291,12 @@ export default function AdminDashboard({
                 </div>
 
                 <div>
-                  <label className="text-[10px] font-bold text-slate-500 uppercase">Telefone do Cliente</label>
+                  <label htmlFor="adminOsClientPhone" className="text-[10px] font-bold text-slate-500 uppercase">Telefone do Cliente</label>
                   <input
+                    id="adminOsClientPhone"
+                    name="adminOsClientPhone"
                     type="text"
+                    autoComplete="tel"
                     placeholder="Ex: (11) 98888-7777"
                     value={osClientPhone}
                     onChange={(e) => setOsClientPhone(e.target.value)}
@@ -1296,10 +1305,13 @@ export default function AdminDashboard({
                 </div>
 
                 <div className="sm:col-span-2">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase">Endereço do Chamado *</label>
+                  <label htmlFor="adminOsClientAddress" className="text-[10px] font-bold text-slate-500 uppercase">Endereço do Chamado *</label>
                   <input
+                    id="adminOsClientAddress"
+                    name="adminOsClientAddress"
                     type="text"
                     required
+                    autoComplete="street-address"
                     placeholder="Ex: Av. Paulista, 1000 - Bela Vista"
                     value={osClientAddress}
                     onChange={(e) => setOsClientAddress(e.target.value)}
@@ -1375,10 +1387,13 @@ export default function AdminDashboard({
             <form onSubmit={handleRegisterEmployeeSubmit} className="p-5 space-y-4 max-h-[80vh] overflow-y-auto">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="text-[10px] font-bold text-slate-500 uppercase">Nome Completo *</label>
+                  <label htmlFor="empNameInput" className="text-[10px] font-bold text-slate-500 uppercase">Nome Completo *</label>
                   <input
+                    id="empNameInput"
+                    name="empName"
                     type="text"
                     required
+                    autoComplete="name"
                     placeholder="Ex: João Ferreira da Silva"
                     value={empName}
                     onChange={(e) => setEmpName(e.target.value)}
@@ -1387,8 +1402,10 @@ export default function AdminDashboard({
                 </div>
 
                 <div>
-                  <label className="text-[10px] font-bold text-slate-500 uppercase">Cargo / Função *</label>
+                  <label htmlFor="empRoleSelect" className="text-[10px] font-bold text-slate-500 uppercase">Cargo / Função *</label>
                   <select
+                    id="empRoleSelect"
+                    name="empRole"
                     required
                     value={empRole}
                     onChange={(e) => setEmpRole(e.target.value as 'admin' | 'employee' | 'client')}
@@ -1401,8 +1418,10 @@ export default function AdminDashboard({
                 </div>
 
                 <div>
-                  <label className="text-[10px] font-bold text-slate-500 uppercase">Gênero *</label>
+                  <label htmlFor="empGenderSelect" className="text-[10px] font-bold text-slate-500 uppercase">Gênero *</label>
                   <select
+                    id="empGenderSelect"
+                    name="empGender"
                     required
                     value={empGender}
                     onChange={(e) => {
@@ -1435,10 +1454,13 @@ export default function AdminDashboard({
                 </div>
 
                 <div>
-                  <label className="text-[10px] font-bold text-slate-500 uppercase">E-mail de Acesso *</label>
+                  <label htmlFor="empEmailInput" className="text-[10px] font-bold text-slate-500 uppercase">E-mail de Acesso *</label>
                   <input
+                    id="empEmailInput"
+                    name="empEmail"
                     type="email"
                     required
+                    autoComplete="email"
                     placeholder="Ex: joao@zentex.com"
                     value={empEmail}
                     onChange={(e) => setEmpEmail(e.target.value)}
@@ -1447,9 +1469,12 @@ export default function AdminDashboard({
                 </div>
 
                 <div>
-                  <label className="text-[10px] font-bold text-slate-500 uppercase">Celular / WhatsApp</label>
+                  <label htmlFor="empPhoneInput" className="text-[10px] font-bold text-slate-500 uppercase">Celular / WhatsApp</label>
                   <input
+                    id="empPhoneInput"
+                    name="empPhone"
                     type="text"
+                    autoComplete="tel"
                     placeholder="Ex: (11) 99999-8888"
                     value={empPhone}
                     onChange={(e) => setEmpPhone(e.target.value)}
@@ -1458,9 +1483,12 @@ export default function AdminDashboard({
                 </div>
 
                 <div>
-                  <label className="text-[10px] font-bold text-slate-500 uppercase">CPF ou RG</label>
+                  <label htmlFor="empDocumentInput" className="text-[10px] font-bold text-slate-500 uppercase">CPF ou RG</label>
                   <input
+                    id="empDocumentInput"
+                    name="empDocument"
                     type="text"
+                    autoComplete="off"
                     placeholder="Ex: 123.456.789-00"
                     value={empDocumentId}
                     onChange={(e) => setEmpDocumentId(e.target.value)}
@@ -1469,8 +1497,10 @@ export default function AdminDashboard({
                 </div>
 
                 <div>
-                  <label className="text-[10px] font-bold text-slate-500 uppercase">Data de Nascimento</label>
+                  <label htmlFor="empBirthDateInput" className="text-[10px] font-bold text-slate-500 uppercase">Data de Nascimento</label>
                   <input
+                    id="empBirthDateInput"
+                    name="empBirthDate"
                     type="date"
                     value={empBirthDate}
                     onChange={(e) => setEmpBirthDate(e.target.value)}
@@ -1479,8 +1509,10 @@ export default function AdminDashboard({
                 </div>
 
                 <div>
-                  <label className="text-[10px] font-bold text-slate-500 uppercase">Data de Admissão</label>
+                  <label htmlFor="empAdmissionDateInput" className="text-[10px] font-bold text-slate-500 uppercase">Data de Admissão</label>
                   <input
+                    id="empAdmissionDateInput"
+                    name="empAdmissionDate"
                     type="date"
                     value={empAdmissionDate}
                     onChange={(e) => setEmpAdmissionDate(e.target.value)}
@@ -1489,10 +1521,13 @@ export default function AdminDashboard({
                 </div>
 
                 <div>
-                  <label className="text-[10px] font-bold text-slate-500 uppercase">{editingUser ? 'Senha de Acesso' : 'Senha Provisória *'}</label>
+                  <label htmlFor="empPasswordInput" className="text-[10px] font-bold text-slate-500 uppercase">{editingUser ? 'Senha de Acesso' : 'Senha Provisória *'}</label>
                   <input
+                    id="empPasswordInput"
+                    name="empPassword"
                     type="text"
                     required
+                    autoComplete="new-password"
                     placeholder="Ex: 123456"
                     value={empPassword}
                     onChange={(e) => setEmpPassword(e.target.value)}
@@ -1501,9 +1536,12 @@ export default function AdminDashboard({
                 </div>
 
                 <div className="sm:col-span-2">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase">Endereço Residencial</label>
+                  <label htmlFor="empAddressInput" className="text-[10px] font-bold text-slate-500 uppercase">Endereço Residencial</label>
                   <input
+                    id="empAddressInput"
+                    name="empAddress"
                     type="text"
+                    autoComplete="street-address"
                     placeholder="Ex: Rua das Flores, 123 - Centro"
                     value={empAddress}
                     onChange={(e) => setEmpAddress(e.target.value)}
