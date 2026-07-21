@@ -7,7 +7,6 @@ import {
 } from 'lucide-react';
 import { User as UserType, ServiceOrder, ChatMessage, OSPriority } from '../types';
 import { getAvatarUrl } from '../utils';
-import { loadEfiSdk } from '../utils/efi';
 
 interface ZentexService {
   id: string;
@@ -204,25 +203,23 @@ export default function ClientDashboard({
       .catch(err => console.error('Erro ao buscar configuração Efí:', err));
   }, []);
 
-  const loadEfiSdkScript = (): Promise<void> => {
-    setEfiSdkStatus('loading');
-    return loadEfiSdk(ACCOUNT_HASH, efiPublicConfig)
-      .then(() => {
+  useEffect(() => {
+    const win = window as any;
+    const activeAccountCode = efiPublicConfig?.accountCode || ACCOUNT_HASH || '3931688641e8e06302526275df0fada3';
+
+    if (typeof win.$gn !== 'undefined') {
+      try {
+        win.$gn.setAccount(activeAccountCode);
+        console.log('[Efí SDK] Chave Account Hash configurada na carga da página:', activeAccountCode);
         setIsSdkReady(true);
         setEfiSdkStatus('loaded');
-      })
-      .catch((err) => {
-        setIsSdkReady(false);
-        setEfiSdkStatus('failed');
-        throw err;
-      });
-  };
-
-  useEffect(() => {
-    if (efiPublicConfig) {
-      loadEfiSdkScript().catch(err => {
-        console.warn('[Efí SDK] Carregamento inicial postergado ou falhou:', err.message);
-      });
+      } catch (e) {
+        console.error('[Efí SDK] Erro ao chamar setAccount na carga:', e);
+      }
+    } else {
+      console.log('[Efí SDK] Objeto $gn não encontrado no window');
+      setIsSdkReady(false);
+      setEfiSdkStatus('idle');
     }
   }, [efiPublicConfig]);
 
@@ -246,41 +243,39 @@ export default function ClientDashboard({
     expirationYear: string;
   }): Promise<string> => {
     return new Promise((resolve, reject) => {
+      const win = window as any;
       const isSandbox = efiPublicConfig 
         ? efiPublicConfig.isSandbox 
         : ((import.meta as any).env.VITE_EFI_SANDBOX === 'true' || (import.meta as any).env.VITE_EFI_SANDBOX === true);
 
-      // Chamada de Tokenização Segura: acesse a biblioteca de forma flexível e segura em relação a tipos
+      if (typeof win.$gn === 'undefined' && typeof win.EfiPay === 'undefined') {
+        console.error('[Efí SDK] Objeto $gn não encontrado no window');
+        if (!isSandbox) {
+          reject(new Error('[Efí SDK] Objeto $gn não encontrado no window'));
+        } else {
+          resolve('token_simulado_desenvolvedor');
+        }
+        return;
+      }
+
+      const efiSdk = win.$gn || win.EfiPay;
+      const activeAccountCode = efiPublicConfig?.accountCode || ACCOUNT_HASH || '3931688641e8e06302526275df0fada3';
+
       try {
-        const win = window as any;
-        const efiSdk = win.$gn || win.EfiPay;
-
-        if (!efiSdk || typeof efiSdk.ready !== 'function') {
-          if (!isSandbox) {
-            reject(new Error('janela.$gn indisponível'));
-          } else {
-            resolve('token_simulado_desenvolvedor');
-          }
-          return;
+        if (typeof efiSdk.setAccount === 'function') {
+          efiSdk.setAccount(activeAccountCode);
+          console.log('[Efí SDK - Tokenização] setAccount configurado dinamicamente antes de tokenizar:', activeAccountCode);
         }
+      } catch (err) {
+        console.error('[Efí SDK] Erro ao re-garantir setAccount no getEfiCardToken:', err);
+      }
 
-        const activeAccountCode = efiPublicConfig?.accountCode || ACCOUNT_HASH || '3931688641e8e06302526275df0fada3';
+      const timeoutId = setTimeout(() => {
+        console.warn('[Efí SDK] Timeout na tokenização do cartão.');
+        reject(new Error('Tempo limite excedido ao inicializar o cartão'));
+      }, 8000);
 
-        // Garante que o setAccount esteja configurado dinamicamente
-        try {
-          if (typeof efiSdk.setAccount === 'function') {
-            efiSdk.setAccount(activeAccountCode);
-            console.log('[Efí SDK - Tokenização] setAccount configurado dinamicamente antes de tokenizar:', activeAccountCode);
-          }
-        } catch (err) {
-          console.error('[Efí SDK] Erro ao re-garantir setAccount no getEfiCardToken:', err);
-        }
-
-        const timeoutId = setTimeout(() => {
-          console.warn('[Efí SDK] Timeout na tokenização do cartão.');
-          reject(new Error('Tempo limite excedido ao inicializar o cartão'));
-        }, 8000);
-
+      try {
         efiSdk.ready((checkout: any) => {
           try {
             checkout.getPaymentToken({
@@ -314,7 +309,8 @@ export default function ClientDashboard({
           }
         });
       } catch (err: any) {
-        console.error('[Efí Bank SDK - Exceção Geral em getEfiCardToken]', err);
+        clearTimeout(timeoutId);
+        console.error('[Efí Bank SDK - Exceção em efiSdk.ready]', err);
         if (!isSandbox) {
           reject(new Error(err.message || 'Erro de inicialização do SDK da Efí no checkout.'));
         } else {
@@ -536,13 +532,6 @@ export default function ClientDashboard({
       // 1. Tratamento Imediato de Erro na Inicialização
       if (!ACCOUNT_HASH || ACCOUNT_HASH.trim() === "" || ACCOUNT_HASH === "SUA_ACCOUNT_HASH_AQUI") {
         throw new Error("Erro: Chave Account Hash não configurada");
-      }
-
-      try {
-        await loadEfiSdkScript();
-      } catch (err: any) {
-        console.error('[Efí SDK] Erro ao carregar script sob demanda no checkout:', err);
-        throw new Error('Falha ao baixar o script de segurança do Efí Bank');
       }
 
       const validation = validateFormFields({
@@ -904,13 +893,6 @@ export default function ClientDashboard({
         // 1. Tratamento Imediato de Erro na Inicialização
         if (!ACCOUNT_HASH || ACCOUNT_HASH.trim() === "" || ACCOUNT_HASH === "SUA_ACCOUNT_HASH_AQUI") {
           throw new Error("Erro: Chave Account Hash não configurada");
-        }
-
-        try {
-          await loadEfiSdkScript();
-        } catch (err: any) {
-          console.error('[Efí SDK] Erro ao carregar script sob demanda no cadastro de ordem:', err);
-          throw new Error('Falha ao baixar o script de segurança do Efí Bank');
         }
 
         const validation = validateFormFields({
