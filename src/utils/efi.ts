@@ -50,10 +50,11 @@ export const loadEfiSdk = (
 
     const activeAccountCode = efiPublicConfig?.accountCode || accountHash || '3931688641e8e06302526275df0fada3';
 
-    // Lista de URLs ordenadas por preferência baseada no ambiente ativo
-    const urls = isSandboxEnv
-      ? ['https://sandbox.gerencianet.com.br/v1/cdn', 'https://api.gerencianet.com.br/v1/cdn']
-      : ['https://api.gerencianet.com.br/v1/cdn', 'https://sandbox.gerencianet.com.br/v1/cdn'];
+    // 1ª Tentativa: Produção / 2ª Tentativa (Fallback): Sandbox
+    const urls = [
+      'https://api.gerencianet.com.br/v1/cdn',
+      'https://sandbox.gerencianet.com.br/v1/cdn'
+    ];
 
     const tryLoad = (index: number) => {
       if (index >= urls.length) {
@@ -92,8 +93,8 @@ export const loadEfiSdk = (
         safeResolve();
       };
 
-      script.onerror = (err) => {
-        console.error(`[Efí Bank Utils] Falha de download na URL: ${currentUrl}`, err);
+      script.onerror = () => {
+        console.error('[Efí SDK] Erro de rede/CORS ao tentar baixar o script:', script.src);
         // Tenta o próximo link de fallback da lista
         tryLoad(index + 1);
       };
