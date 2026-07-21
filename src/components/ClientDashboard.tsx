@@ -278,12 +278,8 @@ export default function ClientDashboard({
 
         const timeoutId = setTimeout(() => {
           console.warn('[Efí SDK] Timeout na tokenização do cartão.');
-          if (!isSandbox) {
-            reject(new Error('Tempo limite esgotado ao tentar validar e criptografar os dados do cartão na Efí Bank.'));
-          } else {
-            resolve('token_simulado_desenvolvedor');
-          }
-        }, 5000);
+          reject(new Error('Tempo limite excedido ao inicializar o cartão'));
+        }, 8000);
 
         efiSdk.ready((checkout: any) => {
           try {
@@ -536,37 +532,31 @@ export default function ClientDashboard({
     setCheckoutLoading(true);
     setCheckoutError(null);
 
-    // 1. Tratamento Imediato de Erro na Inicialização
-    if (!ACCOUNT_HASH || ACCOUNT_HASH.trim() === "" || ACCOUNT_HASH === "SUA_ACCOUNT_HASH_AQUI") {
-      alert("Erro: Chave Account Hash não configurada");
-      setCheckoutLoading(false);
-      return;
-    }
-
     try {
-      await loadEfiSdkScript();
-    } catch (err: any) {
-      console.error('[Efí SDK] Erro ao carregar script sob demanda no checkout:', err);
-      setCheckoutError('Falha ao baixar o script de segurança do Efí Bank');
-      setCheckoutLoading(false);
-      return;
-    }
+      // 1. Tratamento Imediato de Erro na Inicialização
+      if (!ACCOUNT_HASH || ACCOUNT_HASH.trim() === "" || ACCOUNT_HASH === "SUA_ACCOUNT_HASH_AQUI") {
+        throw new Error("Erro: Chave Account Hash não configurada");
+      }
 
-    const validation = validateFormFields({
-      name: checkoutCardName,
-      number: checkoutCardNumber,
-      expiry: checkoutCardExpiry,
-      cvv: checkoutCardCVV,
-      cpf: checkoutCardCpf
-    });
+      try {
+        await loadEfiSdkScript();
+      } catch (err: any) {
+        console.error('[Efí SDK] Erro ao carregar script sob demanda no checkout:', err);
+        throw new Error('Falha ao baixar o script de segurança do Efí Bank');
+      }
 
-    if (!validation.isValid) {
-      setCheckoutError(validation.error);
-      setCheckoutLoading(false);
-      return;
-    }
+      const validation = validateFormFields({
+        name: checkoutCardName,
+        number: checkoutCardNumber,
+        expiry: checkoutCardExpiry,
+        cvv: checkoutCardCVV,
+        cpf: checkoutCardCpf
+      });
 
-    try {
+      if (!validation.isValid) {
+        throw new Error(validation.error || 'Campos do cartão inválidos.');
+      }
+
       const [expiryMonth, expiryYearShort] = checkoutCardExpiry.split('/');
       const brand = detectCardBrand(checkoutCardNumber);
       const expirationMonth = expiryMonth.trim();
@@ -908,28 +898,19 @@ export default function ClientDashboard({
           if (!cardCVV) missing.push('CVV');
           if (!cardCpf) missing.push('CPF/CNPJ do Titular');
           
-          alert(`Por favor, preencha todos os campos obrigatórios do cartão: ${missing.join(', ')}`);
-          setIsPaying(false);
-          setSubmitting(false);
-          return;
+          throw new Error(`Por favor, preencha todos os campos obrigatórios do cartão: ${missing.join(', ')}`);
         }
 
         // 1. Tratamento Imediato de Erro na Inicialização
         if (!ACCOUNT_HASH || ACCOUNT_HASH.trim() === "" || ACCOUNT_HASH === "SUA_ACCOUNT_HASH_AQUI") {
-          alert("Erro: Chave Account Hash não configurada");
-          setIsPaying(false);
-          setSubmitting(false);
-          return;
+          throw new Error("Erro: Chave Account Hash não configurada");
         }
 
         try {
           await loadEfiSdkScript();
         } catch (err: any) {
           console.error('[Efí SDK] Erro ao carregar script sob demanda no cadastro de ordem:', err);
-          alert('Falha ao baixar o script de segurança do Efí Bank');
-          setIsPaying(false);
-          setSubmitting(false);
-          return;
+          throw new Error('Falha ao baixar o script de segurança do Efí Bank');
         }
 
         const validation = validateFormFields({
@@ -941,10 +922,7 @@ export default function ClientDashboard({
         });
 
         if (!validation.isValid) {
-          alert(validation.error);
-          setIsPaying(false);
-          setSubmitting(false);
-          return;
+          throw new Error(validation.error || 'Campos do cartão inválidos.');
         }
 
         const [expiryMonth, expiryYearShort] = cardExpiry.split('/');

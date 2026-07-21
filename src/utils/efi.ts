@@ -16,6 +16,21 @@ export const loadEfiSdk = (
   return new Promise((resolve, reject) => {
     const win = window as any;
 
+    const timeoutId = setTimeout(() => {
+      console.warn('[Efí SDK Utils] Timeout ao baixar ou inicializar o script do Efí Bank.');
+      reject(new Error('Falha ao baixar o script de segurança do Efí Bank'));
+    }, 8000);
+
+    const safeResolve = () => {
+      clearTimeout(timeoutId);
+      resolve();
+    };
+
+    const safeReject = (err: Error) => {
+      clearTimeout(timeoutId);
+      reject(err);
+    };
+
     // 1. Se o SDK já estiver disponível e pronto, resolve imediatamente
     if (typeof win.$gn !== 'undefined' && typeof win.$gn.ready === 'function') {
       const activeAccountCode = efiPublicConfig?.accountCode || accountHash || '3931688641e8e06302526275df0fada3';
@@ -24,7 +39,7 @@ export const loadEfiSdk = (
       } catch (err) {
         console.error('[Efí SDK Utils] Erro ao chamar setAccount em SDK já pronto:', err);
       }
-      resolve();
+      safeResolve();
       return;
     }
 
@@ -50,7 +65,7 @@ export const loadEfiSdk = (
           } catch (err) {
             console.error('[Efí SDK Utils] Erro ao configurar setAccount:', err);
           }
-          resolve();
+          safeResolve();
           return;
         }
 
@@ -66,10 +81,10 @@ export const loadEfiSdk = (
               console.error('[Efí SDK Utils] Erro ao configurar setAccount no onload:', err);
             }
           }
-          resolve();
+          safeResolve();
         };
         script.onerror = () => {
-          reject(new Error('Falha ao baixar o script de segurança do Efí Bank'));
+          safeReject(new Error('Falha ao baixar o script de segurança do Efí Bank'));
         };
         return;
       } else {
@@ -95,12 +110,12 @@ export const loadEfiSdk = (
           console.error('[Efí SDK Utils] Erro ao chamar setAccount no onload:', err);
         }
       }
-      resolve();
+      safeResolve();
     };
 
     newScript.onerror = (err) => {
       console.error('[Efí Bank Utils] Erro crítico ao baixar script do SDK:', err);
-      reject(new Error('Falha ao baixar o script de segurança do Efí Bank'));
+      safeReject(new Error('Falha ao baixar o script de segurança do Efí Bank'));
     };
 
     document.head.appendChild(newScript);
