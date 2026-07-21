@@ -3,7 +3,6 @@ import { User, ServiceOrder } from '../types';
 import { getAvatarUrl } from '../utils';
 import { MapPin, Navigation, User as UserIcon, ZoomIn, ZoomOut, Compass, Search, RefreshCw, Radio, X, Laptop } from 'lucide-react';
 import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
 
 interface ZentexMapProps {
   users: User[];

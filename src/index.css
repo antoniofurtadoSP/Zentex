@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "leaflet/dist/leaflet.css";
 
 @utility shadow-3d-sm {
   box-shadow: 
