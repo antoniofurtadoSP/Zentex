@@ -217,15 +217,13 @@ export default function ClientDashboard({
 
     // Helper to initialize the AccountCode in window.$gn or window.EfiPay
     const initializeAccount = () => {
-      const activeGn = (window as any).$gn || (window as any).EfiPay;
+      const win = window as any;
+      const activeGn = win.$gn || win.EfiPay;
       if (activeGn) {
         if (typeof activeGn.setAccount === 'function') {
           try {
             activeGn.setAccount(activeAccountCode);
             console.log('[Efí SDK] Chave Account Hash configurada via setAccount:', activeAccountCode);
-            console.log('[Efí SDK] Inicializado com sucesso!');
-            setIsSdkReady(true);
-            setEfiSdkStatus('loaded');
           } catch (e) {
             console.error('[Efí SDK] Erro ao chamar setAccount:', e);
           }
@@ -233,19 +231,34 @@ export default function ClientDashboard({
           // Clear any existing AccountCode to avoid duplication
           const filtered = activeGn.filter((arr: any) => !(Array.isArray(arr) && arr[0] === 'AccountCode'));
           filtered.push(['AccountCode', activeAccountCode]);
-          (window as any).$gn = filtered;
+          win.$gn = filtered;
           console.log('[Efí SDK] Chave Account Hash enfileirada no array $gn:', activeAccountCode);
-          console.log('[Efí SDK] Inicializado com sucesso!');
-          setIsSdkReady(true);
-          setEfiSdkStatus('loaded');
         }
       } else {
         // Create as array queue if neither exists yet
-        (window as any).$gn = [['AccountCode', activeAccountCode]];
+        win.$gn = [['AccountCode', activeAccountCode]];
         console.log('[Efí SDK] Chave Account Hash enfileirada em novo array $gn:', activeAccountCode);
-        console.log('[Efí SDK] Inicializado com sucesso!');
-        setIsSdkReady(true);
-        setEfiSdkStatus('loaded');
+      }
+
+      // 1. Validação Real do Objeto Global:
+      // Remova qualquer definição prematura de sucesso. Só considere o SDK pronto se a verificação (typeof window.$gn !== 'undefined' || typeof $gn !== 'undefined') for VERDADEIRA.
+      const isWindowGnDefined = typeof win.$gn !== 'undefined';
+      const isGlobalGnDefined = typeof win.$gn !== 'undefined' || typeof win.EfiPay !== 'undefined';
+
+      if (isWindowGnDefined || isGlobalGnDefined) {
+        // Para garantir que realmente o objeto foi carregado (e não é apenas o array temporário)
+        const gnInstance = win.$gn || win.EfiPay;
+        if (gnInstance && typeof gnInstance.ready === 'function') {
+          console.log('[Efí SDK] Inicializado com sucesso!');
+          setIsSdkReady(true);
+          setEfiSdkStatus('loaded');
+        } else {
+          setIsSdkReady(false);
+          setEfiSdkStatus('loading');
+        }
+      } else {
+        setIsSdkReady(false);
+        setEfiSdkStatus('idle');
       }
     };
 
@@ -257,10 +270,8 @@ export default function ClientDashboard({
         script.id = scriptId;
       }
       if (script.src === targetSrc) {
-        // Correct script already injected, run initialization and immediately set ready state
+        // Correct script already injected, run initialization and check readiness
         initializeAccount();
-        setIsSdkReady(true);
-        setEfiSdkStatus('loaded');
         return;
       } else {
         // Environment mismatch: remove the script to reload the correct one
@@ -284,13 +295,19 @@ export default function ClientDashboard({
     newScript.onload = () => {
       console.log(`[Efí Bank] SDK de Pagamento (${activeIsSandbox ? 'Sandbox' : 'Produção'}) carregado com sucesso!`);
       initializeAccount();
-      setIsSdkReady(true);
-      setEfiSdkStatus('loaded');
+      
+      const win = window as any;
+      if (typeof win.$gn !== 'undefined' || typeof win.EfiPay !== 'undefined') {
+        console.log('[Efí SDK] Inicializado com sucesso!');
+        setIsSdkReady(true);
+        setEfiSdkStatus('loaded');
+      }
     };
 
     newScript.onerror = (err) => {
       console.error('[Efí Bank] Falha crítica ao carregar o script do SDK da Efí:', err);
       setEfiSdkStatus('failed');
+      setIsSdkReady(false);
     };
 
     document.body.appendChild(newScript);
@@ -322,14 +339,65 @@ export default function ClientDashboard({
 
       // Async wrapper to wait for the library to be available and fully loaded
       const waitForSdkAndTokenize = async () => {
-        let gn = (window as any).$gn || (window as any).EfiPay;
-        let attempts = 0;
+        // 2. Injeção Dinâmica de Emergência (Script Fallback)
+        const win = window as any;
+        if (typeof win.$gn === 'undefined' && typeof win.EfiPay === 'undefined') {
+          console.log('[Efí SDK] Injeção Dinâmica de Emergência iniciada (window.$gn indisponível)...');
+          try {
+            const fallbackScript = document.createElement('script');
+            fallbackScript.src = 'https://api.gerencianet.com.br/v1/cdn';
+            fallbackScript.type = 'text/javascript';
+            fallbackScript.async = true;
 
+            await new Promise<void>((res, rej) => {
+              fallbackScript.onload = () => {
+                console.log('[Efí SDK] Script fallback de emergência carregado com sucesso!');
+                try {
+                  const fallbackSdk = (window as any).$gn || (window as any).EfiPay;
+                  if (fallbackSdk && typeof fallbackSdk.setAccount === 'function') {
+                    fallbackSdk.setAccount('3931688641e8e06302526275df0fada3');
+                    console.log('[Efí SDK] setAccount configurado para 3931688641e8e06302526275df0fada3 via fallback onload.');
+                  }
+                } catch (err) {
+                  console.error('[Efí SDK] Falha ao chamar setAccount no fallback onload:', err);
+                }
+                res();
+              };
+              fallbackScript.onerror = () => {
+                rej(new Error('Falha ao carregar o script de fallback da Efí Bank.'));
+              };
+              document.body.appendChild(fallbackScript);
+            });
+          } catch (error) {
+            console.error('[Efí SDK] Erro na injeção dinâmica de emergência:', error);
+            if (!isSandbox) {
+              reject(new Error('Não foi possível carregar o módulo de segurança da Efí Bank de forma dinâmica.'));
+              return;
+            }
+          }
+        }
+
+        // 3. Chamada de Tokenização Segura: acesse a biblioteca de forma flexível utilizando const efiSdk = window.$gn || $gn;
+        let efiSdk: any;
+        try {
+          // Acessa de forma flexível e segura em relação a tipos
+          const globalGn = typeof (window as any).$gn !== 'undefined' ? (window as any).$gn : undefined;
+          const fallbackGn = typeof (window as any).$gn !== 'undefined' ? (window as any).$gn : undefined;
+          efiSdk = (window as any).$gn || globalGn || fallbackGn || (window as any).EfiPay;
+        } catch (e) {
+          console.error('[Efí SDK] Erro ao recuperar efiSdk:', e);
+        }
+
+        let attempts = 0;
         // Poll up to 35 times (3.5 seconds) to wait for SDK to be ready
-        while ((!gn || typeof gn.ready !== 'function') && attempts < 35) {
+        while ((!efiSdk || typeof efiSdk.ready !== 'function') && attempts < 35) {
           attempts++;
           await new Promise((res) => setTimeout(res, 100));
-          gn = (window as any).$gn || (window as any).EfiPay;
+          try {
+            const globalGn = typeof (window as any).$gn !== 'undefined' ? (window as any).$gn : undefined;
+            const fallbackGn = typeof (window as any).$gn !== 'undefined' ? (window as any).$gn : undefined;
+            efiSdk = (window as any).$gn || globalGn || fallbackGn || (window as any).EfiPay;
+          } catch (e) {}
         }
 
         // Configurar um timeout de 4 segundos para evitar que a promessa trave a interface caso o SDK da Efí não responda
@@ -342,7 +410,7 @@ export default function ClientDashboard({
           }
         }, 4000);
 
-        if (!gn || typeof gn.ready !== 'function') {
+        if (!efiSdk || typeof efiSdk.ready !== 'function') {
           clearTimeout(timeoutId);
           if (!isSandbox) {
             reject(new Error('janela.$gn indisponível'));
@@ -352,15 +420,17 @@ export default function ClientDashboard({
           return;
         }
 
-        // Guarantee account initialization right before tokenizing
-        const activeAccountCode = efiPublicConfig?.accountCode || ACCOUNT_HASH;
+        // 2. Inicialização Síncrona/Assíncrona Correta:
+        // No momento em que o usuário clicar em "Confirmar e Contratar", verifique dinamicamente se o $gn possui a Account Hash 3931688641e8e06302526275df0fada3 configurada.
+        // Se ainda não tiver sido atribuída, invoque $gn.setAccount('3931688641e8e06302526275df0fada3') imediatamente antes de gerar o token do cartão.
+        const activeAccountCode = efiPublicConfig?.accountCode || ACCOUNT_HASH || '3931688641e8e06302526275df0fada3';
         
         try {
-          if (typeof gn.setAccount === 'function') {
-            gn.setAccount(activeAccountCode);
-            console.log('[Efí SDK - Tokenização] setAccount chamado com:', activeAccountCode);
-          } else if (Array.isArray(gn)) {
-            const filtered = gn.filter((arr: any) => !(Array.isArray(arr) && arr[0] === 'AccountCode'));
+          if (typeof efiSdk.setAccount === 'function') {
+            efiSdk.setAccount(activeAccountCode);
+            console.log('[Efí SDK - Tokenização] setAccount chamado dinamicamente com:', activeAccountCode);
+          } else if (Array.isArray(efiSdk)) {
+            const filtered = efiSdk.filter((arr: any) => !(Array.isArray(arr) && arr[0] === 'AccountCode'));
             filtered.push(['AccountCode', activeAccountCode]);
             (window as any).$gn = filtered;
             console.log('[Efí SDK - Tokenização] AccountCode enfileirado no array com:', activeAccountCode);
@@ -369,8 +439,9 @@ export default function ClientDashboard({
           console.error('[Efí SDK] Erro ao re-garantir setAccount no getEfiCardToken:', err);
         }
 
+        // 3. Executar o Tokenizer: Envolva a chamada em um bloco try/catch para capturar qualquer exceção e exibir o erro real no console.
         try {
-          gn.ready((checkout: any) => {
+          efiSdk.ready((checkout: any) => {
             try {
               checkout.getPaymentToken({
                 brand: cardDetails.brand,
@@ -394,9 +465,9 @@ export default function ClientDashboard({
               });
             } catch (err: any) {
               clearTimeout(timeoutId);
-              console.error('[Efí Bank SDK] Erro ao chamar getPaymentToken:', err);
+              console.error('[Efí Bank SDK - Exceção em checkout.getPaymentToken]', err);
               if (!isSandbox) {
-                reject(new Error(err.message || 'Erro interno do SDK da Efí'));
+                reject(new Error(err.message || 'Erro interno do SDK da Efí ao gerar o token de pagamento.'));
               } else {
                 resolve('token_simulado_desenvolvedor');
               }
@@ -404,9 +475,9 @@ export default function ClientDashboard({
           });
         } catch (err: any) {
           clearTimeout(timeoutId);
-          console.error('[Efí Bank SDK] Erro ao chamar gn.ready:', err);
+          console.error('[Efí Bank SDK - Exceção em efiSdk.ready]', err);
           if (!isSandbox) {
-            reject(new Error(err.message || 'Erro de inicialização do SDK da Efí'));
+            reject(new Error(err.message || 'Erro de inicialização do SDK da Efí no checkout.'));
           } else {
             resolve('token_simulado_desenvolvedor');
           }
