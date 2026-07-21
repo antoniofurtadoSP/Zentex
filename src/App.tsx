@@ -43,19 +43,75 @@ export default function App() {
   const [voiceEnabled, setVoiceEnabled] = useState<boolean>(() => localStorage.getItem('zentex-voice') === 'true');
   const [showAccessibilityModal, setShowAccessibilityModal] = useState<boolean>(false);
 
-  // Helper function to synthesize text-to-speech
+  // Helper to select the best, most humanized pt-BR voice available in the browser
+  const getBestPtBrVoice = useCallback(() => {
+    if (!window.speechSynthesis) return null;
+    const voices = window.speechSynthesis.getVoices();
+    const ptBrVoices = voices.filter(voice => {
+      const l = voice.lang.toLowerCase();
+      return l === 'pt-br' || l.startsWith('pt-') || l.includes('pt');
+    });
+
+    if (ptBrVoices.length === 0) return null;
+
+    // Prioritized list of keywords for high-quality, humanized voices in Portuguese:
+    // 1. Natural / Online voices (e.g. Edge Natural, Microsoft Online) which sound amazingly human
+    // 2. Google voices (usually very smooth and natural)
+    // 3. Apple/Safari high quality voices (e.g. Luciana, Joana, Siri, Premium)
+    // 4. Default Brazil voice (pt-BR)
+    const sorted = [...ptBrVoices].sort((a, b) => {
+      const aName = a.name.toLowerCase();
+      const bName = b.name.toLowerCase();
+      
+      const getScore = (name: string, voiceObj: any) => {
+        let score = 0;
+        // High priority for Natural/Online neural voices
+        if (name.includes('natural') || name.includes('online')) score += 100;
+        // High priority for Google voices
+        if (name.includes('google')) score += 50;
+        // Priority for premium, high quality, or Siri voices
+        if (name.includes('premium') || name.includes('high') || name.includes('siri')) score += 30;
+        // Prefer Brazilian Portuguese (pt-BR) over European Portuguese (pt-PT)
+        if (voiceObj.lang.toLowerCase() === 'pt-br') score += 20;
+        // Names of known good Brazilian voices
+        if (name.includes('luciana') || name.includes('maria') || name.includes('daniel') || name.includes('heloisa') || name.includes('francisca') || name.includes('antonio')) score += 10;
+        return score;
+      };
+
+      return getScore(bName, b) - getScore(aName, a);
+    });
+
+    return sorted[0];
+  }, []);
+
+  // Helper function to synthesize text-to-speech with natural cadence
   const speakText = useCallback((text: string) => {
     if (!window.speechSynthesis) return;
     try {
       window.speechSynthesis.cancel();
       const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = 'pt-BR';
-      utterance.rate = 1.05;
+      
+      // Select best humanized voice
+      const bestVoice = getBestPtBrVoice();
+      if (bestVoice) {
+        utterance.voice = bestVoice;
+        console.log(`[Zentex Voz] Usando voz humanizada selecionada: ${bestVoice.name} (${bestVoice.lang})`);
+      } else {
+        utterance.lang = 'pt-BR';
+        console.log('[Zentex Voz] Nenhuma voz pt-BR correspondente encontrada, usando padrão de idioma pt-BR.');
+      }
+      
+      // Settings for human-like cadence (cadência humanizada)
+      // A rate slightly slower than the default 1.05 makes it sound much more natural, less rushed and less robotic
+      utterance.rate = 0.96; 
+      utterance.pitch = 1.0;  // Balanced natural tone
+      utterance.volume = 1.0;
+
       window.speechSynthesis.speak(utterance);
     } catch (e) {
       console.error('Speech synthesis error:', e);
     }
-  }, []);
+  }, [getBestPtBrVoice]);
 
   // Expose speak utility to global window context for subcomponents to trigger
   useEffect(() => {
