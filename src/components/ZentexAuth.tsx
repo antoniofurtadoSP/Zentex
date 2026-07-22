@@ -291,51 +291,6 @@ export default function ZentexAuth({
               </button>
             </div>
           </form>
-
-          {/* Quick Info Credentials for evaluator */}
-          <div className="mt-6 p-3.5 bg-emerald-50/50 rounded-2xl border border-emerald-100/80 shadow-3d-sm">
-            <span className="text-[10px] font-black text-emerald-800 uppercase block tracking-wider mb-2.5 flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5 text-emerald-600 animate-pulse" />
-              <span>Acesso Rápido Operacional:</span>
-            </span>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-[11px]">
-              <button
-                type="button"
-                onClick={async () => {
-                  setEmail('antonioclaudiofp@gmail.com');
-                  setPassword('123456');
-                  setLoading(true);
-                  await onLogin('antonioclaudiofp@gmail.com', '123456');
-                  setLoading(false);
-                }}
-                className="p-2 bg-white hover:bg-emerald-50/50 border border-slate-200 hover:border-emerald-300 rounded-xl text-left transition-all active:translate-y-0.5 shadow-3d-sm border-b-2 flex flex-col justify-between cursor-pointer duration-150"
-              >
-                <div>
-                  <span className="font-extrabold text-slate-800 block text-[11px]">Entrar como Gerente</span>
-                  <span className="text-slate-500 font-mono text-[9px] break-all leading-none">antonioclaudiofp@gmail.com</span>
-                </div>
-                <span className="text-[8px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded font-bold self-start mt-1.5">Acesso Rápido</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={async () => {
-                  setEmail('lucas@zentex.com');
-                  setPassword('123456');
-                  setLoading(true);
-                  await onLogin('lucas@zentex.com', '123456');
-                  setLoading(false);
-                }}
-                className="p-2 bg-white hover:bg-emerald-50/50 border border-slate-200 hover:border-emerald-300 rounded-xl text-left transition-all active:translate-y-0.5 shadow-3d-sm border-b-2 flex flex-col justify-between cursor-pointer duration-150"
-              >
-                <div>
-                  <span className="font-extrabold text-slate-800 block text-[11px]">Entrar como Técnico</span>
-                  <span className="text-slate-500 font-mono text-[9px] break-all leading-none">lucas@zentex.com</span>
-                </div>
-                <span className="text-[8px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded font-bold self-start mt-1.5">Acesso Rápido</span>
-              </button>
-            </div>
-          </div>
         </div>
       ) : (
         <div>
