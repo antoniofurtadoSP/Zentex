@@ -3,7 +3,8 @@ import {
   Clipboard, Send, Clock, User, Phone, MapPin, CheckCircle, 
   AlertCircle, Sparkles, MessageSquare, 
   Map, UserCheck, ShieldAlert, Eye, Settings, FileText, ChevronRight, X, Image,
-  Zap, Home, Building, Check, CreditCard, Smartphone, Lock, Copy
+  Zap, Home, Building, Check, CreditCard, Smartphone, Lock, Copy,
+  ArrowLeft, Users, Calendar, Plus, Minus, Wrench, ShieldCheck
 } from 'lucide-react';
 import { User as UserType, ServiceOrder, ChatMessage, OSPriority } from '../types';
 import { getAvatarUrl, isValidCPF, compressImageFile } from '../utils';
@@ -155,7 +156,11 @@ export default function ClientDashboard({
 
   // Dynamic calculator states
   const [selectedService, setSelectedService] = useState<any | null>(null);
-  const [m2Size, setM2Size] = useState<number>(50);
+  const [m2Size, setM2Size] = useState<number>(48);
+  const [cleaningType, setCleaningType] = useState<'simples' | 'geral' | 'pesada'>('geral');
+  const [allocatedStaff, setAllocatedStaff] = useState<number>(1);
+  const [scheduledDate, setScheduledDate] = useState<string>('Hoje');
+  const [scheduledTime, setScheduledTime] = useState<string>('08:00');
   const [selectedExtras, setSelectedExtras] = useState<string[]>([]);
   const [observations, setObservations] = useState<string>('');
 
@@ -706,9 +711,19 @@ export default function ClientDashboard({
     o => o.createdBy === currentUser.id || o.clientName === currentUser.name
   );
 
+  const getRecommendedStaff = (m2: number) => {
+    if (m2 < 80) return 1;
+    if (m2 < 180) return 2;
+    return 3;
+  };
+
   const handleSelectService = (service: ZentexService) => {
     setSelectedService(service);
-    setM2Size(50);
+    setM2Size(48);
+    setCleaningType('geral');
+    setAllocatedStaff(1);
+    setScheduledDate('Hoje');
+    setScheduledTime('08:00');
     setSelectedExtras([]);
     setObservations('');
     setTitle(service.name);
@@ -836,57 +851,69 @@ export default function ClientDashboard({
   const calculatePriceBreakdown = () => {
     if (!selectedService) {
       return {
-        isPackage: false,
-        basePrice: 0,
-        extras: 0,
-        prioritySurcharge: 0,
+        baseRate: 0,
+        areaVal: 0,
+        cleaningFactor: 1.2,
+        cleaningTypeName: 'Geral',
+        staffFactor: 1.0,
+        staffLabel: '1 Profissional',
+        extrasTotal: 0,
+        extrasList: [],
         total: 0,
+        formulaText: '',
         breakdownLines: ['Selecione um serviço para calcular']
       };
     }
 
-    const lines: string[] = [];
-    const areaVal = m2Size * selectedService.basePricePerM2;
-    let basePrice = areaVal;
-    
-    if (areaVal < selectedService.minPrice) {
-      basePrice = selectedService.minPrice;
-      lines.push(`Taxa Mínima do Serviço (${selectedService.name}): R$ ${selectedService.minPrice.toFixed(2).replace('.', ',')}`);
-    } else {
-      lines.push(`Cálculo por Área (${m2Size}m² x R$ ${selectedService.basePricePerM2.toFixed(2).replace('.', ',')}/m²): R$ ${areaVal.toFixed(2).replace('.', ',')}`);
-    }
+    const baseRate = selectedService.basePricePerM2 || 2.50;
+    const areaVal = m2Size * baseRate;
+
+    // Cleaning type factor: Simples 0.8x, Geral 1.2x, Pesada 1.7x
+    const cleaningFactor = cleaningType === 'simples' ? 0.8 : cleaningType === 'pesada' ? 1.7 : 1.2;
+    const cleaningTypeName = cleaningType === 'simples' ? 'Simples' : cleaningType === 'pesada' ? 'Pesada' : 'Geral';
+
+    // Staff factor: 1 prof = 1.0x, 2 profs = 1.4x, 3 profs = 1.8x, 4 profs = 2.2x ...
+    const staffFactor = 1 + (allocatedStaff - 1) * 0.4;
+    const staffLabel = `${allocatedStaff} ${allocatedStaff === 1 ? 'Profissional' : 'Profissionais'}`;
 
     // Extras
     let extrasTotal = 0;
+    const extrasList: { id: string; name: string; price: number }[] = [];
     selectedExtras.forEach(extraId => {
-      const extraItem = selectedService.extras.find((e: any) => e.id === extraId);
+      const extraItem = selectedService.extras?.find((e: any) => e.id === extraId);
       if (extraItem) {
         extrasTotal += extraItem.price;
-        lines.push(`Adicional: ${extraItem.name}: + R$ ${extraItem.price.toFixed(2).replace('.', ',')}`);
+        extrasList.push(extraItem);
       }
     });
 
-    // Urgency surcharge
-    let prioritySurcharge = 0;
-    const subtotal = basePrice + extrasTotal;
-    if (priority === 'alta') {
-      prioritySurcharge = subtotal * 0.3;
-      lines.push(`Acréscimo de Urgência Operacional (Alta 30%): + R$ ${prioritySurcharge.toFixed(2).replace('.', ',')}`);
-    } else if (priority === 'baixa') {
-      prioritySurcharge = -subtotal * 0.1;
-      lines.push(`Desconto por Agendamento Flexível (Baixa -10%): - R$ ${Math.abs(prioritySurcharge).toFixed(2).replace('.', ',')}`);
-    } else {
-      lines.push('Urgência de Atendimento Média: Sem acréscimo');
+    const calculatedServiceTotal = (areaVal * cleaningFactor * staffFactor) + extrasTotal;
+    const total = Math.max(selectedService.minPrice || 100, calculatedServiceTotal);
+
+    const formulaText = `(${m2Size} m² × R$ ${baseRate.toFixed(2).replace('.', ',')}) × ${cleaningFactor.toFixed(1)}x × ${staffFactor.toFixed(1)}x`;
+
+    const lines: string[] = [
+      `Área do Imóvel: ${m2Size} m²`,
+      `Tipo de Limpeza: ${cleaningTypeName} (${cleaningFactor.toFixed(1)}x)`,
+      `Equipe Alocada: ${staffLabel} (${staffFactor.toFixed(1)}x)`,
+      `Tarifa Base da Categoria: R$ ${baseRate.toFixed(2).replace('.', ',')} / m²`
+    ];
+
+    if (extrasList.length > 0) {
+      lines.push(`Adicionais Opcionais: ${extrasList.map(e => `${e.name} (+R$ ${e.price.toFixed(2)})`).join(', ')}`);
     }
 
-    const total = subtotal + prioritySurcharge;
-
     return {
-      isPackage: false,
-      basePrice,
-      extras: extrasTotal,
-      prioritySurcharge,
-      total: Math.max(selectedService.minPrice, total),
+      baseRate,
+      areaVal,
+      cleaningFactor,
+      cleaningTypeName,
+      staffFactor,
+      staffLabel,
+      extrasTotal,
+      extrasList,
+      total,
+      formulaText,
       breakdownLines: lines
     };
   };
@@ -900,14 +927,19 @@ export default function ClientDashboard({
     if (selectedService) {
       orderTitle = selectedService.name;
       const extrasNames = selectedExtras
-        .map(id => selectedService.extras.find((ex: any) => ex.id === id)?.name)
+        .map(id => selectedService.extras?.find((ex: any) => ex.id === id)?.name)
         .filter(Boolean)
         .join(', ');
       
+      const cleaningTypeName = cleaningType === 'simples' ? 'Simples (0.8x)' : cleaningType === 'pesada' ? 'Pesada (1.7x)' : 'Geral (1.2x)';
+      const staffLabel = `${allocatedStaff} ${allocatedStaff === 1 ? 'Profissional' : 'Profissionais'}`;
+
       orderDescription = `Solicitação de ${selectedService.name} para área de ${m2Size}m².\n` +
-        `• Urgência: ${priority.toUpperCase()}\n` +
-        (extrasNames ? `• Adicionais: ${extrasNames}\n` : '') +
-        (observations ? `• Observações: ${observations}\n` : '');
+        `• Tipo de Limpeza: ${cleaningTypeName}\n` +
+        `• Equipe Alocada: ${staffLabel}\n` +
+        `• Agendamento: ${scheduledDate} às ${scheduledTime}\n` +
+        (extrasNames ? `• Adicionais Opcionais: ${extrasNames}\n` : '') +
+        (observations ? `• Instruções / Observações: ${observations}\n` : '');
     }
 
     if (!orderTitle || !orderDescription || !address) {
@@ -1294,477 +1326,617 @@ export default function ClientDashboard({
               </div>
             </div>
           ) : (
-            /* DETAILED ESTIMATOR AND CALCULATOR PANEL */
-            <div className="space-y-6 animate-fade-in">
-              <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
-                <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-6">
-                  <div className="flex items-center gap-3">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedService(null);
-                        setTitle('');
-                        setDescription('');
-                      }}
-                      className="p-1.5 hover:bg-slate-100 rounded-xl border border-slate-200 transition-all text-slate-500 hover:text-slate-800"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                    <div>
-                      <span className="text-[8px] bg-emerald-50 text-emerald-800 font-black px-2 py-0.5 rounded border border-emerald-100 uppercase tracking-wider">Passo 2: Configure</span>
-                      <h3 className="text-sm font-black text-slate-800 flex items-center gap-1.5 mt-0.5">
-                        {getZentexServiceIcon(selectedService.icon)}
-                        <span>{selectedService.name}</span>
-                      </h3>
+            /* DETAILED ESTIMATOR AND CALCULATOR PANEL (REFRACTORED TO MATCH APP SCREENSHOTS) */
+            <div className="space-y-5 animate-fade-in max-w-4xl mx-auto">
+              {/* TOP HEADER WITH BACK BUTTON */}
+              <div className="flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedService(null);
+                    setTitle('');
+                    setDescription('');
+                  }}
+                  className="inline-flex items-center gap-2 px-3.5 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50 transition-all shadow-sm cursor-pointer"
+                >
+                  <ArrowLeft className="w-4 h-4 text-emerald-600" />
+                  <span>Dados do Serviço</span>
+                </button>
+                <span className="text-[10px] bg-emerald-100 text-emerald-800 font-black px-3 py-1 rounded-full uppercase tracking-wider">
+                  Configuração Interativa
+                </span>
+              </div>
+
+              {/* SERVICE SUMMARY BANNER CARD */}
+              <div className="bg-emerald-50/90 border border-emerald-200/80 rounded-2xl p-4 flex items-center justify-between gap-3 shadow-sm">
+                <div className="flex items-center gap-3.5">
+                  <div className="p-3 bg-emerald-500 text-white rounded-xl shadow-sm shrink-0">
+                    {getZentexServiceIcon(selectedService.icon)}
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black text-slate-800 leading-tight">{selectedService.name}</h3>
+                    <p className="text-xs font-bold text-emerald-800 mt-0.5">
+                      Tarifa básica: R$ {selectedService.basePricePerM2.toFixed(2).replace('.', ',')} por m²
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedService(null);
+                    setTitle('');
+                    setDescription('');
+                  }}
+                  className="text-[10px] font-black text-emerald-700 hover:text-emerald-900 bg-emerald-100 hover:bg-emerald-200 px-3 py-1.5 rounded-xl transition-all cursor-pointer shrink-0"
+                >
+                  Mudar Categoria
+                </button>
+              </div>
+
+              <form onSubmit={handleCreateRequest} className="space-y-5">
+                {/* CARD 1: ÁREA ESTIMADA DO IMÓVEL */}
+                <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Building className="w-4 h-4 text-emerald-600" />
+                      <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider">Área Estimada do Imóvel</h4>
+                    </div>
+                    <span className="text-xs font-black text-emerald-800 bg-emerald-100 px-3 py-1 rounded-full border border-emerald-200 font-mono">
+                      {m2Size} m²
+                    </span>
+                  </div>
+
+                  {/* SLIDER WITH RANGE LABELS */}
+                  <div className="space-y-2 pt-1">
+                    <input
+                      type="range"
+                      min="20"
+                      max="300"
+                      step="5"
+                      value={m2Size}
+                      onChange={(e) => setM2Size(Number(e.target.value))}
+                      className="w-full h-2.5 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-emerald-600"
+                    />
+                    <div className="flex justify-between text-[10px] font-bold text-slate-400 font-mono">
+                      <span>20 m²</span>
+                      <span>150 m²</span>
+                      <span>300 m²</span>
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedService(null);
-                      setTitle('');
-                      setDescription('');
-                    }}
-                    className="text-[10px] font-black text-emerald-600 hover:text-emerald-500 uppercase tracking-wider"
-                  >
-                    Alterar Serviço
-                  </button>
-                </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-                  {/* Configuration column (m2, urgency, details) */}
-                  <div className="lg:col-span-3 space-y-4">
-                    {/* Size Slider Input */}
-                    <div className="space-y-2">
-                      <div className="flex justify-between items-center">
-                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider">Tamanho da Área em m² *</label>
-                        <span className="text-xs font-black text-emerald-600 font-mono bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-100">{m2Size} m²</span>
-                      </div>
-                      <input
-                        type="range"
-                        min="10"
-                        max="500"
-                        step="5"
-                        value={m2Size}
-                        onChange={(e) => setM2Size(Number(e.target.value))}
-                        className="w-full h-2 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-emerald-600"
-                      />
-                      <div className="flex justify-between text-[8px] text-slate-400 font-mono">
-                        <span>10 m²</span>
-                        <span>150 m²</span>
-                        <span>300 m²</span>
-                        <span>500 m²</span>
-                      </div>
-                    </div>
-
-                    {/* Urgency Selection */}
-                    <div>
-                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider">Tipo de Urgência *</label>
-                      <div className="grid grid-cols-3 gap-2 mt-1.5">
-                        {(['baixa', 'media', 'alta'] as OSPriority[]).map((prio) => (
+                  {/* AVERAGE PRESETS FOR CATEGORY */}
+                  <div className="pt-2 border-t border-slate-100 space-y-2">
+                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-wider block">
+                      Média de Valores para esta categoria:
+                    </span>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                      {[
+                        { label: 'Apto (45m²)', m2: 45 },
+                        { label: 'Casa (90m²)', m2: 90 },
+                        { label: 'Grande (180m²)', m2: 180 }
+                      ].map((preset) => {
+                        const calculatedPresetPrice = (preset.m2 * selectedService.basePricePerM2 * 1.2 * 1.0);
+                        const isSelectedPreset = m2Size === preset.m2;
+                        return (
                           <button
                             type="button"
-                            key={prio}
-                            onClick={() => setPriority(prio)}
-                            className={`py-2 rounded-xl border font-bold text-xs capitalize transition-all cursor-pointer ${
-                              priority === prio
-                                ? prio === 'alta'
-                                  ? 'bg-rose-50 border-rose-500 text-rose-700 shadow-sm ring-1 ring-rose-200'
-                                  : prio === 'media'
-                                  ? 'bg-amber-50 border-amber-500 text-amber-700 shadow-sm ring-1 ring-amber-200'
-                                  : 'bg-emerald-50 border-emerald-500 text-emerald-700 shadow-sm ring-1 ring-emerald-200'
-                                : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100'
+                            key={preset.m2}
+                            onClick={() => {
+                              setM2Size(preset.m2);
+                              setAllocatedStaff(getRecommendedStaff(preset.m2));
+                            }}
+                            className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                              isSelectedPreset
+                                ? 'bg-emerald-50 border-emerald-500 ring-2 ring-emerald-200 shadow-sm'
+                                : 'bg-slate-50 border-slate-200 hover:bg-slate-100 text-slate-700'
                             }`}
                           >
-                            {prio === 'baixa' ? 'Baixa (-10%)' : prio === 'media' ? 'Média (Normal)' : 'Alta (+30%)'}
+                            <span className="text-[10px] font-bold text-slate-500 block">{preset.label}</span>
+                            <span className="text-sm font-black text-emerald-700 font-mono block mt-0.5">
+                              R$ {calculatedPresetPrice.toFixed(2).replace('.', ',')}
+                            </span>
                           </button>
-                        ))}
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+
+                {/* CARD 2: TIPO DE LIMPEZA */}
+                <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-emerald-600" />
+                    <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider">Tipo de Limpeza</h4>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    {[
+                      {
+                        type: 'simples' as const,
+                        title: 'Limpeza Simples',
+                        badge: 'Mais Econômica',
+                        badgeStyle: 'bg-slate-100 text-slate-700',
+                        factorText: 'Fator multiplicador: 0.8x',
+                        desc: 'Ideal para manutenção rápida. Aspiração, pano úmido e organização básica das superfícies de salas e quartos.'
+                      },
+                      {
+                        type: 'geral' as const,
+                        title: 'Limpeza Geral',
+                        badge: 'Mais Escolhida',
+                        badgeStyle: 'bg-emerald-600 text-white font-bold',
+                        factorText: 'Fator multiplicador: 1.2x',
+                        desc: 'Limpeza completa de banheiros, cozinha, aspiração detalhada, remoção de poeira profunda e vidros internos.'
+                      },
+                      {
+                        type: 'pesada' as const,
+                        title: 'Limpeza Pesada',
+                        badge: 'Ultra Completa',
+                        badgeStyle: 'bg-purple-100 text-purple-800 font-bold',
+                        factorText: 'Fator multiplicador: 1.7x',
+                        desc: 'Completa e minuciosa. Foco em remoção de gordura incrustada, limpeza interna de armários e rejuntes.'
+                      }
+                    ].map((item) => {
+                      const isSel = cleaningType === item.type;
+                      return (
+                        <div
+                          key={item.type}
+                          onClick={() => setCleaningType(item.type)}
+                          className={`p-4 rounded-2xl border-2 transition-all cursor-pointer flex flex-col justify-between space-y-3 relative ${
+                            isSel
+                              ? 'bg-emerald-50/40 border-emerald-600 shadow-sm ring-1 ring-emerald-200'
+                              : 'bg-white border-slate-200 hover:border-slate-300'
+                          }`}
+                        >
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <h5 className="text-xs font-black text-slate-800">{item.title}</h5>
+                              <span className={`text-[9px] px-2 py-0.5 rounded-full uppercase tracking-wider ${item.badgeStyle}`}>
+                                {item.badge}
+                              </span>
+                            </div>
+                            <p className="text-[10px] text-slate-500 leading-relaxed">{item.desc}</p>
+                          </div>
+                          <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[9px] font-mono font-bold text-slate-600">
+                            <span>{item.factorText}</span>
+                            {isSel && <Check className="w-4 h-4 text-emerald-600 font-black" />}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* CARD 3: PROFISSIONAIS ALOCADOS */}
+                <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <Users className="w-4 h-4 text-emerald-600" />
+                        <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider">Profissionais Alocados</h4>
                       </div>
+                      <p className="text-[10px] text-slate-500 mt-0.5">
+                        Alocar mais profissionais agiliza e melhora a eficiência da limpeza.
+                      </p>
                     </div>
 
-                    {/* Extras Checkbox */}
-                    {selectedService.extras.length > 0 && (
-                      <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider">Adicionais Extras Opcionais</label>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                          {selectedService.extras.map((extra: any) => {
-                            const isChecked = selectedExtras.includes(extra.id);
-                            return (
-                              <label
-                                key={extra.id}
-                                className={`flex items-start gap-2.5 p-2.5 rounded-xl border transition-all cursor-pointer select-none ${
-                                  isChecked
-                                    ? 'bg-emerald-50/50 border-emerald-300 text-slate-800'
-                                    : 'bg-slate-50 border-slate-200/80 text-slate-500 hover:bg-slate-100'
-                                }`}
-                              >
-                                <input
-                                  type="checkbox"
-                                  className="mt-0.5 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 h-3.5 w-3.5"
-                                  checked={isChecked}
-                                  onChange={() => {
-                                    if (isChecked) {
-                                      setSelectedExtras(selectedExtras.filter(id => id !== extra.id));
-                                    } else {
-                                      setSelectedExtras([...selectedExtras, extra.id]);
-                                    }
-                                  }}
-                                />
-                                <div className="space-y-0.5 flex-1 min-w-0">
-                                  <span className="text-[10px] font-semibold leading-tight block text-slate-800">{extra.name}</span>
-                                  <span className="text-[9px] text-emerald-600 font-mono block">+ R$ {extra.price.toFixed(2)}</span>
-                                </div>
-                              </label>
-                            );
-                          })}
-                        </div>
+                    <div className="flex items-center gap-3 bg-slate-50 border border-slate-200 p-1.5 rounded-xl">
+                      <button
+                        type="button"
+                        onClick={() => setAllocatedStaff(Math.max(1, allocatedStaff - 1))}
+                        disabled={allocatedStaff <= 1}
+                        className="p-1.5 bg-white border border-slate-200 hover:bg-slate-100 disabled:opacity-40 rounded-lg text-slate-700 transition-all cursor-pointer"
+                      >
+                        <Minus className="w-3.5 h-3.5" />
+                      </button>
+                      <span className="text-xs font-black text-slate-800 font-mono px-1">
+                        {allocatedStaff}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setAllocatedStaff(allocatedStaff + 1)}
+                        className="p-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg transition-all cursor-pointer"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="bg-emerald-50/80 border border-emerald-200 p-2.5 rounded-xl flex items-center gap-2 text-emerald-800 text-[10px] font-bold">
+                    <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>
+                      Equipe Ideal: Recomendado para este imóvel ({m2Size}m²):{' '}
+                      <strong>{getRecommendedStaff(m2Size)} {getRecommendedStaff(m2Size) === 1 ? 'profissional' : 'profissionais'}</strong>
+                    </span>
+                  </div>
+                </div>
+
+                {/* CARD 4 & 5: DATA DO ATENDIMENTO & HORÁRIO DE INÍCIO */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Data do Atendimento */}
+                  <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Calendar className="w-4 h-4 text-emerald-600" />
+                      <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider">Data do Atendimento</h4>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {['Hoje', 'Amanhã', '23/07', '24/07'].map((d) => (
+                        <button
+                          type="button"
+                          key={d}
+                          onClick={() => setScheduledDate(d)}
+                          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                            scheduledDate === d
+                              ? 'bg-emerald-600 text-white shadow-sm'
+                              : 'bg-slate-50 border border-slate-200 text-slate-600 hover:bg-slate-100'
+                          }`}
+                        >
+                          {d}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Horário de Início */}
+                  <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Clock className="w-4 h-4 text-emerald-600" />
+                      <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider">Horário de Início</h4>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {['08:00', '10:30', '13:30', '16:00'].map((t) => (
+                        <button
+                          type="button"
+                          key={t}
+                          onClick={() => setScheduledTime(t)}
+                          className={`px-3.5 py-2 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer ${
+                            scheduledTime === t
+                              ? 'bg-emerald-600 text-white shadow-sm'
+                              : 'bg-slate-50 border border-slate-200 text-slate-600 hover:bg-slate-100'
+                          }`}
+                        >
+                          {t}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* CARD 6: ADICIONAIS EXTRAS OPCIONAIS (PRESERVED) */}
+                {selectedService.extras && selectedService.extras.length > 0 && (
+                  <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Wrench className="w-4 h-4 text-emerald-600" />
+                      <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider">Adicionais Opcionais Mantidos</h4>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
+                      {selectedService.extras.map((extra: any) => {
+                        const isChecked = selectedExtras.includes(extra.id);
+                        return (
+                          <label
+                            key={extra.id}
+                            className={`flex items-start gap-2.5 p-3 rounded-xl border transition-all cursor-pointer select-none ${
+                              isChecked
+                                ? 'bg-emerald-50/60 border-emerald-400 text-slate-800 shadow-sm'
+                                : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              className="mt-0.5 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 h-4 w-4"
+                              checked={isChecked}
+                              onChange={() => {
+                                if (isChecked) {
+                                  setSelectedExtras(selectedExtras.filter(id => id !== extra.id));
+                                } else {
+                                  setSelectedExtras([...selectedExtras, extra.id]);
+                                }
+                              }}
+                            />
+                            <div className="space-y-0.5 flex-1 min-w-0">
+                              <span className="text-xs font-bold text-slate-800 block">{extra.name}</span>
+                              <span className="text-[10px] text-emerald-700 font-mono font-bold block">+ R$ {extra.price.toFixed(2).replace('.', ',')}</span>
+                            </div>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* CARD 7: ENDEREÇO COMPLETO E INSTRUÇÕES */}
+                <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-4">
+                  <div>
+                    <label htmlFor="serviceAddress" className="text-[10px] font-black text-slate-500 uppercase tracking-wider flex items-center gap-1 mb-1">
+                      <MapPin className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>Endereço Completo *</span>
+                    </label>
+                    <input
+                      id="serviceAddress"
+                      name="serviceAddress"
+                      type="text"
+                      required
+                      placeholder="Ex: Av. Paulista, 1000 - Apto 42 - Bela Vista, São Paulo - SP"
+                      value={address}
+                      onChange={(e) => setAddress(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 focus:outline-none focus:border-emerald-500 focus:bg-white transition-all shadow-inner"
+                    />
+                  </div>
+
+                  <div>
+                    <label htmlFor="serviceObs" className="text-[10px] font-black text-slate-500 uppercase tracking-wider block mb-1">
+                      📝 Instruções Especiais / Observações
+                    </label>
+                    <textarea
+                      id="serviceObs"
+                      rows={2}
+                      placeholder="Ex: Chave na portaria, pets em cômodo separado, dar foco na cozinha..."
+                      value={observations}
+                      onChange={(e) => setObservations(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 focus:outline-none focus:border-emerald-500 focus:bg-white transition-all resize-none shadow-inner"
+                    />
+                  </div>
+                </div>
+
+                {/* CARD 8: DETALHAMENTO DO ORÇAMENTO (MATCHING SCREENSHOT 3 & 6) */}
+                <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-4">
+                  <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
+                    <FileText className="w-4 h-4 text-emerald-600" />
+                    <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider">Detalhamento do Orçamento</h4>
+                  </div>
+
+                  <div className="space-y-2 text-xs">
+                    <div className="flex justify-between text-slate-600">
+                      <span>Área do Imóvel:</span>
+                      <span className="font-bold font-mono text-slate-800">{m2Size} m²</span>
+                    </div>
+                    <div className="flex justify-between text-slate-600">
+                      <span>Tipo de Limpeza:</span>
+                      <span className="font-bold text-slate-800">{calculatePriceBreakdown().cleaningTypeName} ({calculatePriceBreakdown().cleaningFactor.toFixed(1)}x)</span>
+                    </div>
+                    <div className="flex justify-between text-slate-600">
+                      <span>Equipe Alocada:</span>
+                      <span className="font-bold text-slate-800">{calculatePriceBreakdown().staffLabel} ({calculatePriceBreakdown().staffFactor.toFixed(1)}x)</span>
+                    </div>
+                    <div className="flex justify-between text-slate-600">
+                      <span>Tarifa Base da Categoria:</span>
+                      <span className="font-bold font-mono text-slate-800">R$ {selectedService.basePricePerM2.toFixed(2).replace('.', ',')} / m²</span>
+                    </div>
+
+                    {calculatePriceBreakdown().extrasList.length > 0 && (
+                      <div className="flex justify-between text-slate-600">
+                        <span>Adicionais Opcionais:</span>
+                        <span className="font-bold text-emerald-700 text-right max-w-xs">
+                          {calculatePriceBreakdown().extrasList.map(e => `${e.name} (+R$ ${e.price.toFixed(2)})`).join(', ')}
+                        </span>
                       </div>
                     )}
 
-                    {/* Additional Observations */}
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider">Demais informações necessárias & Observações</label>
-                      <textarea
-                        rows={3}
-                        placeholder="Ex: Restrições de horários, animais no local, detalhes sobre portas de vidro ou pontos críticos para focarmos..."
-                        value={observations}
-                        onChange={(e) => setObservations(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 mt-1 focus:outline-none focus:border-emerald-500 focus:bg-white transition-all resize-none shadow-inner"
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div>
-                        <label htmlFor="servicePhone" className="text-[9px] font-black text-slate-500 uppercase tracking-wider">Telefone / WhatsApp</label>
-                        <input
-                          id="servicePhone"
-                          name="servicePhone"
-                          type="text"
-                          autoComplete="tel"
-                          placeholder="Ex: (11) 99999-8888"
-                          value={phone}
-                          onChange={(e) => setPhone(e.target.value)}
-                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 mt-1 focus:outline-none focus:border-emerald-500 focus:bg-white transition-all shadow-inner"
-                        />
-                      </div>
-                      <div>
-                        <label htmlFor="serviceAddress" className="text-[9px] font-black text-slate-500 uppercase tracking-wider">Endereço de Atendimento *</label>
-                        <input
-                          id="serviceAddress"
-                          name="serviceAddress"
-                          type="text"
-                          required
-                          autoComplete="street-address"
-                          placeholder="Endereço completo"
-                          value={address}
-                          onChange={(e) => setAddress(e.target.value)}
-                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 mt-1 focus:outline-none focus:border-emerald-500 focus:bg-white transition-all shadow-inner"
-                        />
-                      </div>
+                    <div className="pt-2 border-t border-slate-100 flex justify-between text-[11px] text-slate-500 font-mono">
+                      <span>Fórmula:</span>
+                      <span className="font-bold text-slate-700">{calculatePriceBreakdown().formulaText}</span>
                     </div>
                   </div>
 
-                  {/* Calculator and Payment column (Price, pix, credit, pay button) */}
-                  <div className="lg:col-span-2 space-y-4">
-                    <form
-                      onSubmit={(e) => {
-                        e.preventDefault();
-                        // Format dynamic summary for the service order description
-                        const extrasNames = selectedExtras
-                          .map(id => selectedService.extras.find((ex: any) => ex.id === id)?.name)
-                          .filter(Boolean)
-                          .join(', ');
-                        
-                        const fullDescription = `Solicitação de ${selectedService.name} para área de ${m2Size}m².\n` +
-                          `• Urgência: ${priority.toUpperCase()}\n` +
-                          (extrasNames ? `• Adicionais: ${extrasNames}\n` : '') +
-                          (observations ? `• Observações: ${observations}\n` : '');
-
-                        // Sync state so the onSubmit logic receives it correctly
-                        setDescription(fullDescription);
-                        
-                        handleCreateRequest(e);
-                      }}
-                      className="space-y-4"
-                    >
-                      {/* DYNAMIC PRICING ESTIMATOR */}
-                      <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4.5 space-y-4">
-                        <div className="flex items-center gap-2 border-b border-slate-200/60 pb-3">
-                          <div className="p-1.5 bg-emerald-100 text-emerald-800 rounded-lg">
-                            <Sparkles className="w-4 h-4" />
-                          </div>
-                          <div>
-                            <h4 className="text-[10px] font-black text-slate-800 uppercase tracking-wider">Cálculo em Tempo Real</h4>
-                            <p className="text-[8px] text-slate-400 font-medium">Transparência e exatidão operacional</p>
-                          </div>
-                        </div>
-
-                        <div className="space-y-1.5">
-                          {calculatePriceBreakdown().breakdownLines.map((line, i) => (
-                            <div key={i} className="flex justify-between items-center text-[10px] text-slate-600 gap-2">
-                              <span className="font-medium flex items-center gap-1 shrink truncate">
-                                <Check className="w-3 h-3 text-emerald-500 shrink-0" />
-                                <span className="truncate">{line.split(':')[0]}</span>
-                              </span>
-                              {line.includes(':') && (
-                                <span className="font-mono font-bold text-slate-700 shrink-0">{line.split(':')[1]}</span>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-
-                        <div className="border-t border-slate-200 pt-3 flex items-center justify-between">
-                          <span className="text-[9px] font-black uppercase text-slate-500 tracking-wider">Valor Estimado</span>
-                          <div className="text-right">
-                            <span className="text-[10px] font-bold text-slate-400 font-mono align-super mr-0.5">R$</span>
-                            <span className="text-xl font-black text-slate-900 font-mono tracking-tight">
-                              {calculatePriceBreakdown().total.toFixed(2).replace('.', ',')}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* SECURE PAYMENT METHOD SELECTOR */}
-                      <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4.5 space-y-3">
-                        <div className="flex items-center gap-2 border-b border-slate-200/60 pb-2.5">
-                          <div className="p-1.5 bg-blue-100 text-blue-800 rounded-lg">
-                            <Lock className="w-4 h-4" />
-                          </div>
-                          <div>
-                            <h4 className="text-[10px] font-black text-slate-800 uppercase tracking-wider">Checkout Seguro</h4>
-                            <p className="text-[8px] text-slate-400 font-medium font-mono">Zentex Instant Pay Integration</p>
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-3 gap-1.5">
-                          {(['pix', 'credit', 'debit'] as const).map((method) => {
-                            const isSel = selectedPayMethod === method;
-                            return (
-                              <button
-                                type="button"
-                                key={method}
-                                onClick={() => setSelectedPayMethod(method)}
-                                className={`py-2.5 rounded-xl border flex flex-col items-center justify-center gap-1 cursor-pointer transition-all ${
-                                  isSel
-                                    ? 'bg-white border-blue-500 text-blue-700 shadow-md ring-2 ring-blue-100'
-                                    : 'bg-white border-slate-200 text-slate-500 hover:text-slate-800'
-                                }`}
-                              >
-                                {method === 'pix' ? (
-                                  <Smartphone className="w-4 h-4 shrink-0" />
-                                ) : (
-                                  <CreditCard className="w-4 h-4 shrink-0" />
-                                )}
-                                <span className="text-[8px] font-black uppercase tracking-wider">
-                                  {method === 'pix' ? 'Pix' : method === 'credit' ? 'Crédito' : 'Débito'}
-                                </span>
-                              </button>
-                            );
-                          })}
-                        </div>
-
-                        {/* PIX AREA */}
-                        {selectedPayMethod === 'pix' && (
-                          <div className="bg-white border border-slate-200 rounded-xl p-3 space-y-3 animate-fade-in text-center">
-                            <div className="flex justify-center">
-                              <div className="w-24 h-24 bg-white border border-slate-200 p-1.5 rounded-xl flex items-center justify-center relative">
-                                <img 
-                                  src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(
-                                    `00020101021226850014br.gov.bcb.pix2563pix.zentex.com.br/qr/v2/payment/${currentUser.id}${calculatePriceBreakdown().total.toFixed(2)}`
-                                  )}`} 
-                                  alt="QR Code Pix"
-                                  className="w-full h-full object-contain"
-                                  referrerPolicy="no-referrer"
-                                />
-                                <div className="absolute inset-0 m-auto w-5 h-5 bg-emerald-600 rounded-md border-2 border-white flex items-center justify-center shadow-md">
-                                  <span className="text-[7px] text-white font-black">Z</span>
-                                </div>
-                              </div>
-                            </div>
-                            <div className="space-y-1">
-                              <h5 className="text-[10px] font-bold text-slate-800">Escaneie o QR Code ou copie o código</h5>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const pixCode = `00020101021226850014br.gov.bcb.pix2563pix.zentex.com.br/qr/v2/payment/${currentUser.id}${calculatePriceBreakdown().total.toFixed(2)}`;
-                                  navigator.clipboard.writeText(pixCode);
-                                  setHasCopiedPix(true);
-                                  setTimeout(() => setHasCopiedPix(false), 2000);
-                                }}
-                                className="w-full py-1.5 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-lg text-slate-600 text-[9px] font-bold flex items-center justify-center gap-1 cursor-pointer"
-                              >
-                                {hasCopiedPix ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
-                                <span>{hasCopiedPix ? 'Código Copiado!' : 'Copiar Chave Pix'}</span>
-                              </button>
-                            </div>
-                          </div>
-                        )}
-
-                        {/* CARDS INPUTS */}
-                        {(selectedPayMethod === 'credit' || selectedPayMethod === 'debit') && (
-                          <div className="bg-white border border-slate-200 rounded-xl p-3 space-y-2.5 animate-fade-in">
-                            {isIframe && efiPublicConfig && !efiPublicConfig.isSandbox && (
-                              <div className="bg-indigo-50 border border-indigo-150 p-3 rounded-xl text-left space-y-1 animate-fade-in mb-2.5">
-                                <span className="text-indigo-800 font-extrabold text-[9px] uppercase tracking-wider block">🔒 Dica de Segurança (Iframe Detectado)</span>
-                                <p className="text-[8px] text-indigo-750 leading-relaxed">
-                                  Você está visualizando o app no painel integrado do AI Studio. Gateways seguros como a <strong>Efí Bank</strong> restringem a validação de cartões em iframes de terceiros.
-                                </p>
-                                <p className="text-[8px] text-indigo-900 font-bold leading-normal">
-                                  👉 Para prosseguir com o pagamento por cartão de forma segura, abra o aplicativo em uma aba externa (clicando no botão de seta no canto superior direito do seu preview)!
-                                </p>
-                              </div>
-                            )}
-                            <div className="grid grid-cols-1 gap-2.5">
-                              <div>
-                                <label htmlFor="cardHolderName" className="text-[9px] font-bold text-slate-500 uppercase block mb-0.5">Nome do Titular</label>
-                                <input
-                                  id="cardHolderName"
-                                  name="cardHolderName"
-                                  type="text"
-                                  required
-                                  autoComplete="cc-name"
-                                  placeholder="NOME IMPRESSO NO CARTÃO"
-                                  value={cardName}
-                                  onChange={(e) => setCardName(e.target.value.toUpperCase())}
-                                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-[10px] text-slate-800 focus:outline-none"
-                                />
-                              </div>
-                              <div>
-                                <label htmlFor="cardNumber" className="text-[9px] font-bold text-slate-500 uppercase block mb-0.5">Número do Cartão</label>
-                                <input
-                                  id="cardNumber"
-                                  name="cardNumber"
-                                  type="text"
-                                  required
-                                  autoComplete="cc-number"
-                                  maxLength={19}
-                                  placeholder="NÚMERO DO CARTÃO"
-                                  value={cardNumber}
-                                  onChange={(e) => {
-                                    const raw = e.target.value.replace(/\D/g, '');
-                                    const formatted = raw.replace(/(\d{4})/g, '$1 ').trim();
-                                    setCardNumber(formatted);
-                                  }}
-                                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-[10px] text-slate-800 focus:outline-none font-mono"
-                                />
-                              </div>
-                              <div className="grid grid-cols-2 gap-2">
-                                <div>
-                                  <label htmlFor="cardExpiration" className="text-[9px] font-bold text-slate-500 uppercase block mb-0.5">Validade</label>
-                                  <input
-                                    id="cardExpiration"
-                                    name="cardExpiration"
-                                    type="text"
-                                    required
-                                    autoComplete="cc-exp"
-                                    maxLength={5}
-                                    placeholder="MM/AA"
-                                    value={cardExpiry}
-                                    onChange={(e) => {
-                                      const raw = e.target.value.replace(/\D/g, '');
-                                      setCardExpiry(raw.length >= 2 ? `${raw.slice(0, 2)}/${raw.slice(2, 4)}` : raw);
-                                    }}
-                                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-[10px] text-slate-800 focus:outline-none font-mono"
-                                  />
-                                </div>
-                                <div>
-                                  <label htmlFor="cardCvv" className="text-[9px] font-bold text-slate-500 uppercase block mb-0.5">CVV</label>
-                                  <input
-                                    id="cardCvv"
-                                    name="cardCvv"
-                                    type="password"
-                                    required
-                                    autoComplete="cc-csc"
-                                    maxLength={3}
-                                    placeholder="CVV"
-                                    value={cardCVV}
-                                    onChange={(e) => setCardCVV(e.target.value.replace(/\D/g, ''))}
-                                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-[10px] text-slate-800 focus:outline-none font-mono"
-                                  />
-                                </div>
-                              </div>
-                              <div>
-                                <label htmlFor="docNumber" className="text-[9px] font-bold text-slate-500 uppercase block mb-0.5">CPF / CNPJ do Titular</label>
-                                <input
-                                  id="docNumber"
-                                  name="docNumber"
-                                  type="text"
-                                  required
-                                  autoComplete="off"
-                                  placeholder="CPF OU CNPJ DO TITULAR DO CARTÃO"
-                                  value={cardCpf}
-                                  onChange={(e) => setCardCpf(e.target.value)}
-                                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-[10px] text-slate-800 focus:outline-none font-mono"
-                                />
-                              </div>
-                            </div>
-                          </div>
-                        )}
-
-                        {/* SANDBOX CONTROLS */}
-                        {(selectedPayMethod === 'credit' || selectedPayMethod === 'debit') && (!efiPublicConfig || efiPublicConfig.isSandbox) && (
-                          <div className="bg-amber-50/75 border border-amber-200/60 rounded-xl p-3 space-y-2 animate-fade-in text-left">
-                            <span className="font-bold text-amber-800 uppercase text-[9px] tracking-wider block">⚙️ Simulação de Sandbox (Efí Bank)</span>
-                            <p className="text-[10px] text-amber-700 leading-normal">Escolha o resultado desejado para testar seus fluxos de crédito/débito:</p>
-                            <div className="flex gap-2">
-                              <button
-                                type="button"
-                                onClick={() => setSandboxSimulation('approved')}
-                                className={`flex-1 py-1.5 px-3 rounded-lg border text-[10px] font-bold transition-all cursor-pointer ${
-                                  sandboxSimulation === 'approved'
-                                    ? 'bg-emerald-600 text-white border-emerald-500 shadow-sm'
-                                    : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-                                }`}
-                              >
-                                Simular Autorização
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setSandboxSimulation('declined')}
-                                className={`flex-1 py-1.5 px-3 rounded-lg border text-[10px] font-bold transition-all cursor-pointer ${
-                                  sandboxSimulation === 'declined'
-                                    ? 'bg-rose-600 text-white border-rose-500 shadow-sm'
-                                    : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-                                }`}
-                              >
-                                Simular Recusa
-                              </button>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* ACTION SUBMIT BUTTON */}
-                      <div className="pt-2">
-                        {isPaying ? (
-                          <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 flex items-center justify-center gap-2.5">
-                            <svg className="animate-spin h-4.5 w-4.5 text-emerald-600" fill="none" viewBox="0 0 24 24">
-                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                            </svg>
-                            <span className="text-[10px] font-black text-slate-600 uppercase tracking-wider animate-pulse">
-                              Efetuando Transação Segura Zentex...
-                            </span>
-                          </div>
-                        ) : (
-                          <button
-                            type="submit"
-                            disabled={submitting}
-                            className="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:from-slate-300 disabled:to-slate-400 text-white text-xs font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 transition-all shadow-md cursor-pointer active:scale-95 duration-150"
-                          >
-                            <Send className="w-4 h-4" />
-                            <span>
-                              {!selectedPayMethod
-                                ? 'Selecione a Forma de Pagamento'
-                                : `Confirmar e Contratar • R$ ${calculatePriceBreakdown().total.toFixed(2).replace('.', ',')}`}
-                            </span>
-                          </button>
-                        )}
-                      </div>
-                    </form>
+                  <div className="bg-emerald-50/70 border border-emerald-200 rounded-xl p-4 flex items-center justify-between">
+                    <div>
+                      <span className="text-[10px] font-black uppercase text-slate-500 block tracking-wider">Valor Total</span>
+                      <span className="text-xs font-semibold text-emerald-800 flex items-center gap-1 mt-0.5">
+                        <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>Pagamento 100% seguro e criptografado</span>
+                      </span>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-2xl font-black text-emerald-700 font-mono tracking-tight">
+                        R$ {calculatePriceBreakdown().total.toFixed(2).replace('.', ',')}
+                      </span>
+                    </div>
                   </div>
                 </div>
-              </div>
+
+                {/* CARD 9: SECURE PAYMENT METHOD SELECTOR & CONFIRM BUTTON */}
+                <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-4">
+                  <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
+                    <Lock className="w-4 h-4 text-blue-600" />
+                    <div>
+                      <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider">Forma de Pagamento</h4>
+                      <p className="text-[10px] text-slate-400">Processamento oficial via Efí Bank</p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2">
+                    {(['pix', 'credit', 'debit'] as const).map((method) => {
+                      const isSel = selectedPayMethod === method;
+                      return (
+                        <button
+                          type="button"
+                          key={method}
+                          onClick={() => setSelectedPayMethod(method)}
+                          className={`py-3 rounded-xl border flex flex-col items-center justify-center gap-1 cursor-pointer transition-all ${
+                            isSel
+                              ? 'bg-emerald-50 border-emerald-500 text-emerald-800 shadow-md ring-2 ring-emerald-200'
+                              : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                          }`}
+                        >
+                          {method === 'pix' ? (
+                            <Smartphone className="w-5 h-5" />
+                          ) : (
+                            <CreditCard className="w-5 h-5" />
+                          )}
+                          <span className="text-[10px] font-black uppercase tracking-wider">
+                            {method === 'pix' ? 'Pix Instantâneo' : method === 'credit' ? 'Cartão Crédito' : 'Cartão Débito'}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* PIX AREA */}
+                  {selectedPayMethod === 'pix' && (
+                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3 animate-fade-in text-center">
+                      <div className="flex justify-center">
+                        <div className="w-28 h-28 bg-white border border-slate-200 p-2 rounded-xl flex items-center justify-center relative shadow-sm">
+                          <img 
+                            src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(
+                              `00020101021226850014br.gov.bcb.pix2563pix.zentex.com.br/qr/v2/payment/${currentUser.id}${calculatePriceBreakdown().total.toFixed(2)}`
+                            )}`} 
+                            alt="QR Code Pix"
+                            className="w-full h-full object-contain"
+                            referrerPolicy="no-referrer"
+                          />
+                          <div className="absolute inset-0 m-auto w-6 h-6 bg-emerald-600 rounded-md border-2 border-white flex items-center justify-center shadow-md">
+                            <span className="text-[8px] text-white font-black">Z</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="space-y-1.5 max-w-sm mx-auto">
+                        <h5 className="text-xs font-bold text-slate-800">Escaneie o QR Code com o app do seu banco</h5>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const pixCode = `00020101021226850014br.gov.bcb.pix2563pix.zentex.com.br/qr/v2/payment/${currentUser.id}${calculatePriceBreakdown().total.toFixed(2)}`;
+                            navigator.clipboard.writeText(pixCode);
+                            setHasCopiedPix(true);
+                            setTimeout(() => setHasCopiedPix(false), 2000);
+                          }}
+                          className="w-full py-2 bg-white hover:bg-slate-100 border border-slate-200 rounded-xl text-slate-700 text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer shadow-sm transition-all"
+                        >
+                          {hasCopiedPix ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
+                          <span>{hasCopiedPix ? 'Código Pix Copiado!' : 'Copiar Chave Pix Copia e Cola'}</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* CARDS INPUTS */}
+                  {(selectedPayMethod === 'credit' || selectedPayMethod === 'debit') && (
+                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3 animate-fade-in">
+                      {isIframe && efiPublicConfig && !efiPublicConfig.isSandbox && (
+                        <div className="bg-indigo-50 border border-indigo-150 p-3 rounded-xl text-left space-y-1 animate-fade-in mb-2.5">
+                          <span className="text-indigo-800 font-extrabold text-[9px] uppercase tracking-wider block">🔒 Dica de Segurança (Iframe Detectado)</span>
+                          <p className="text-[9px] text-indigo-750 leading-relaxed">
+                            Você está visualizando o app no painel integrado do AI Studio. Gateways seguros como a <strong>Efí Bank</strong> restringem a validação de cartões em iframes de terceiros.
+                          </p>
+                          <p className="text-[9px] text-indigo-900 font-bold leading-normal">
+                            👉 Para prosseguir com o pagamento por cartão de forma segura, abra o aplicativo em uma aba externa!
+                          </p>
+                        </div>
+                      )}
+                      <div className="grid grid-cols-1 gap-3">
+                        <div>
+                          <label htmlFor="cardHolderName" className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Nome do Titular</label>
+                          <input
+                            id="cardHolderName"
+                            name="cardHolderName"
+                            type="text"
+                            required
+                            autoComplete="cc-name"
+                            placeholder="NOME IMPRESSO NO CARTÃO"
+                            value={cardName}
+                            onChange={(e) => setCardName(e.target.value.toUpperCase())}
+                            className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-emerald-500"
+                          />
+                        </div>
+                        <div>
+                          <label htmlFor="cardNumber" className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Número do Cartão</label>
+                          <input
+                            id="cardNumber"
+                            name="cardNumber"
+                            type="text"
+                            required
+                            autoComplete="cc-number"
+                            maxLength={19}
+                            placeholder="NÚMERO DO CARTÃO"
+                            value={cardNumber}
+                            onChange={(e) => {
+                              const raw = e.target.value.replace(/\D/g, '');
+                              const formatted = raw.replace(/(\d{4})/g, '$1 ').trim();
+                              setCardNumber(formatted);
+                            }}
+                            className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 focus:outline-none font-mono"
+                          />
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label htmlFor="cardExpiration" className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Validade</label>
+                            <input
+                              id="cardExpiration"
+                              name="cardExpiration"
+                              type="text"
+                              required
+                              autoComplete="cc-exp"
+                              maxLength={5}
+                              placeholder="MM/AA"
+                              value={cardExpiry}
+                              onChange={(e) => {
+                                const raw = e.target.value.replace(/\D/g, '');
+                                setCardExpiry(raw.length >= 2 ? `${raw.slice(0, 2)}/${raw.slice(2, 4)}` : raw);
+                              }}
+                              className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 focus:outline-none font-mono"
+                            />
+                          </div>
+                          <div>
+                            <label htmlFor="cardCvv" className="text-[10px] font-bold text-slate-500 uppercase block mb-1">CVV</label>
+                            <input
+                              id="cardCvv"
+                              name="cardCvv"
+                              type="password"
+                              required
+                              autoComplete="cc-csc"
+                              maxLength={3}
+                              placeholder="CVV"
+                              value={cardCVV}
+                              onChange={(e) => setCardCVV(e.target.value.replace(/\D/g, ''))}
+                              className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 focus:outline-none font-mono"
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <label htmlFor="docNumber" className="text-[10px] font-bold text-slate-500 uppercase block mb-1">CPF / CNPJ do Titular</label>
+                          <input
+                            id="docNumber"
+                            name="docNumber"
+                            type="text"
+                            required
+                            autoComplete="off"
+                            placeholder="CPF OU CNPJ DO TITULAR DO CARTÃO"
+                            value={cardCpf}
+                            onChange={(e) => setCardCpf(e.target.value)}
+                            className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 focus:outline-none font-mono"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ACTION SUBMIT BUTTON */}
+                  <div className="pt-2">
+                    {isPaying ? (
+                      <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex items-center justify-center gap-3">
+                        <svg className="animate-spin h-5 w-5 text-emerald-600" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                        </svg>
+                        <span className="text-xs font-black text-slate-700 uppercase tracking-wider animate-pulse">
+                          Efetuando Transação Segura Zentex...
+                        </span>
+                      </div>
+                    ) : (
+                      <button
+                        type="submit"
+                        disabled={submitting}
+                        className="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:from-slate-300 disabled:to-slate-400 text-white text-sm font-extrabold py-4 rounded-xl flex items-center justify-center gap-2 transition-all shadow-md cursor-pointer active:scale-95 duration-150 uppercase tracking-wider"
+                      >
+                        <ShieldCheck className="w-5 h-5 text-emerald-200" />
+                        <span>
+                          {!selectedPayMethod
+                            ? 'Selecione a Forma de Pagamento'
+                            : `Ir para Pagamento Seguro • R$ ${calculatePriceBreakdown().total.toFixed(2).replace('.', ',')}`}
+                        </span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </form>
             </div>
           )}
         </div>

@@ -328,7 +328,12 @@ async function saveDBToFirestore(db: DB) {
     });
     
     await batch.commit();
-  } catch (err) {
+  } catch (err: any) {
+    if (err?.code === 7 || (err?.message && err.message.includes('PERMISSION_DENIED'))) {
+      console.warn('Firestore Admin batch write restricted (PERMISSION_DENIED). Disabling server-side Firestore sync.');
+      firestore = null;
+      return;
+    }
     console.error('Failed to sync saveDB to Firestore:', err);
   }
 }
@@ -340,7 +345,12 @@ async function saveUserToFirestore(user: User) {
     const cleanUser = JSON.parse(JSON.stringify(user));
     await firestore.collection('users').doc(user.id).set(cleanUser);
     console.log(`Successfully synced user ${user.id} (${user.email}) to Firestore.`);
-  } catch (err) {
+  } catch (err: any) {
+    if (err?.code === 7 || (err?.message && err.message.includes('PERMISSION_DENIED'))) {
+      console.warn('Firestore Admin write restricted (PERMISSION_DENIED). Disabling server-side Firestore sync.');
+      firestore = null;
+      return;
+    }
     console.error(`Failed to save user ${user.id} to Firestore:`, err);
   }
 }
@@ -350,7 +360,12 @@ async function deleteUserFromFirestore(id: string) {
   try {
     await firestore.collection('users').doc(id).delete();
     console.log(`Successfully deleted user ${id} from Firestore.`);
-  } catch (err) {
+  } catch (err: any) {
+    if (err?.code === 7 || (err?.message && err.message.includes('PERMISSION_DENIED'))) {
+      console.warn('Firestore Admin delete restricted (PERMISSION_DENIED). Disabling server-side Firestore sync.');
+      firestore = null;
+      return;
+    }
     console.error(`Failed to delete user ${id} from Firestore:`, err);
   }
 }
@@ -360,7 +375,12 @@ async function deleteOrderFromFirestore(id: string) {
   try {
     await firestore.collection('orders').doc(id).delete();
     console.log(`Successfully deleted order ${id} from Firestore.`);
-  } catch (err) {
+  } catch (err: any) {
+    if (err?.code === 7 || (err?.message && err.message.includes('PERMISSION_DENIED'))) {
+      console.warn('Firestore Admin delete restricted (PERMISSION_DENIED). Disabling server-side Firestore sync.');
+      firestore = null;
+      return;
+    }
     console.error(`Failed to delete order ${id} from Firestore:`, err);
   }
 }
@@ -371,7 +391,12 @@ async function saveOrderToFirestore(order: ServiceOrder) {
     const cleanOrder = JSON.parse(JSON.stringify(order));
     await firestore.collection('orders').doc(order.id).set(cleanOrder);
     console.log(`Successfully synced order ${order.id} to Firestore.`);
-  } catch (err) {
+  } catch (err: any) {
+    if (err?.code === 7 || (err?.message && err.message.includes('PERMISSION_DENIED'))) {
+      console.warn('Firestore Admin write restricted (PERMISSION_DENIED). Disabling server-side Firestore sync.');
+      firestore = null;
+      return;
+    }
     console.error(`Failed to save order ${order.id} to Firestore:`, err);
   }
 }
@@ -382,7 +407,12 @@ async function saveChatToFirestore(chat: ChatMessage) {
     const cleanChat = JSON.parse(JSON.stringify(chat));
     await firestore.collection('chats').doc(chat.id).set(cleanChat);
     console.log(`Successfully synced chat message ${chat.id} to Firestore.`);
-  } catch (err) {
+  } catch (err: any) {
+    if (err?.code === 7 || (err?.message && err.message.includes('PERMISSION_DENIED'))) {
+      console.warn('Firestore Admin write restricted (PERMISSION_DENIED). Disabling server-side Firestore sync.');
+      firestore = null;
+      return;
+    }
     console.error(`Failed to save chat ${chat.id} to Firestore:`, err);
   }
 }
@@ -393,7 +423,12 @@ async function saveTimecardToFirestore(tc: TimeCard) {
     const cleanTc = JSON.parse(JSON.stringify(tc));
     await firestore.collection('timecards').doc(tc.id).set(cleanTc);
     console.log(`Successfully synced timecard ${tc.id} to Firestore.`);
-  } catch (err) {
+  } catch (err: any) {
+    if (err?.code === 7 || (err?.message && err.message.includes('PERMISSION_DENIED'))) {
+      console.warn('Firestore Admin write restricted (PERMISSION_DENIED). Disabling server-side Firestore sync.');
+      firestore = null;
+      return;
+    }
     console.error(`Failed to save timecard ${tc.id} to Firestore:`, err);
   }
 }
@@ -531,8 +566,13 @@ async function initDatabase() {
       });
 
       return;
-    } catch (error) {
-      console.error('Failed to load database from Firestore. Falling back to local data.json.', error);
+    } catch (error: any) {
+      if (error?.code === 7 || (error?.message && error.message.includes('PERMISSION_DENIED'))) {
+        console.warn('Firestore Admin access denied (PERMISSION_DENIED). Disabling server-side Firestore sync and using local data.json.');
+      } else {
+        console.error('Failed to load database from Firestore. Falling back to local data.json.', error);
+      }
+      firestore = null;
     }
   }
 
