@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { User, ServiceOrder, TimeCard, ChatMessage, OSPriority } from '../types';
-import { getAvatarUrl, isValidCPF } from '../utils';
+import { getAvatarUrl, isValidCPF, compressImageFile } from '../utils';
 import ZentexMap from './ZentexMap';
 import ZentexChat from './ZentexChat';
 import { 
@@ -115,18 +115,17 @@ export default function AdminDashboard({
     }
   };
 
-  const processFile = (file: File) => {
+  const processFile = async (file: File) => {
     if (!file.type.startsWith('image/')) {
       alert('Por favor, envie apenas arquivos de imagem.');
       return;
     }
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      if (event.target?.result) {
-        setEmpAvatar(event.target.result as string);
-      }
-    };
-    reader.readAsDataURL(file);
+    try {
+      const compressedBase64 = await compressImageFile(file, 300, 300, 0.8);
+      setEmpAvatar(compressedBase64);
+    } catch {
+      alert('Erro ao processar imagem.');
+    }
   };
 
   // Map tracking helper

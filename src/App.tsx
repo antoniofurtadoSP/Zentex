@@ -205,9 +205,9 @@ export default function App() {
     return () => clearInterval(pollInterval);
   }, [loadData]);
 
-  // Active real-time background GPS tracking & online heartbeat for logged-in field technicians
+  // Active real-time background GPS tracking & online heartbeat for logged-in users
   useEffect(() => {
-    if (!currentUser || currentUser.role !== 'employee') return;
+    if (!currentUser) return;
 
     const trackAndHeartbeat = () => {
       if (navigator.geolocation) {

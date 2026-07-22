@@ -6,7 +6,7 @@ import {
   Zap, Home, Building, Check, CreditCard, Smartphone, Lock, Copy
 } from 'lucide-react';
 import { User as UserType, ServiceOrder, ChatMessage, OSPriority } from '../types';
-import { getAvatarUrl, isValidCPF } from '../utils';
+import { getAvatarUrl, isValidCPF, compressImageFile } from '../utils';
 
 interface ZentexService {
   id: string;
@@ -2868,13 +2868,35 @@ export default function ClientDashboard({
               </div>
 
               <div>
-                <label htmlFor="profileAvatar" className="text-[10px] font-bold text-slate-500 uppercase">Foto do Perfil (URL)</label>
+                <label htmlFor="profileAvatar" className="text-[10px] font-bold text-slate-500 uppercase flex items-center justify-between">
+                  <span>Foto do Perfil</span>
+                  <label htmlFor="client-avatar-file" className="cursor-pointer text-emerald-600 hover:text-emerald-700 normal-case font-bold text-[10px] flex items-center gap-1">
+                    <Image className="w-3 h-3" />
+                    <span>Upload de Foto</span>
+                  </label>
+                  <input
+                    id="client-avatar-file"
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={async (e) => {
+                      if (e.target.files && e.target.files[0]) {
+                        try {
+                          const base64 = await compressImageFile(e.target.files[0], 300, 300, 0.8);
+                          setProfileAvatar(base64);
+                        } catch {
+                          alert('Erro ao carregar imagem.');
+                        }
+                      }
+                    }}
+                  />
+                </label>
                 <input
                   id="profileAvatar"
                   name="profileAvatar"
                   type="text"
-                  placeholder="URL da foto..."
-                  value={profileAvatar}
+                  placeholder="Link da imagem ou envie do dispositivo..."
+                  value={profileAvatar.startsWith('data:image') ? 'Foto enviada (arquivo local)' : profileAvatar}
                   onChange={(e) => setProfileAvatar(e.target.value)}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 mt-1 focus:outline-none focus:border-emerald-500 focus:bg-white transition-all shadow-inner"
                 />

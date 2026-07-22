@@ -114,3 +114,57 @@ export function formatCPF(cpf: string): string {
     .replace(/(\d{3})(\d{1,2})$/, '$1-$2');
 }
 
+/**
+ * Redimensiona e comprime uma imagem enviada pelo usuário para no máximo 300x300px em JPEG (qualidade 0.8).
+ * Isso garante que o avatar fique leve (~15KB) e não ultrapasse os limites de payload ou do Firestore (1MB).
+ */
+export function compressImageFile(file: File, maxWidth = 300, maxHeight = 300, quality = 0.8): Promise<string> {
+  return new Promise((resolve, reject) => {
+    if (!file.type.startsWith('image/')) {
+      reject(new Error('Por favor, envie apenas arquivos de imagem.'));
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target?.result as string;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > maxWidth) {
+            height = Math.round((height * maxWidth) / width);
+            width = maxWidth;
+          }
+        } else {
+          if (height > maxHeight) {
+            width = Math.round((width * maxHeight) / height);
+            height = maxHeight;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(event.target?.result as string);
+          return;
+        }
+
+        ctx.drawImage(img, 0, 0, width, height);
+        const dataUrl = canvas.toDataURL('image/jpeg', quality);
+        resolve(dataUrl);
+      };
+      img.onerror = () => {
+        resolve(event.target?.result as string);
+      };
+    };
+    reader.onerror = (err) => reject(err);
+  });
+}
+
+

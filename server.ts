@@ -450,10 +450,11 @@ async function initDatabase() {
             email: 'antonioclaudiofp@gmail.com',
             role: 'admin',
             phone: '(11) 98888-1111',
-            avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+            avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
             status: 'working',
             password: '123456',
-            isTemporaryPassword: false
+            isTemporaryPassword: false,
+            gender: 'male'
           };
           memoryDB.users.push(defaultAdmin);
           await firestore.collection('users').doc(defaultAdmin.id).set(defaultAdmin);
@@ -479,10 +480,11 @@ async function initDatabase() {
             email: 'antonioclaudiofp@gmail.com',
             role: 'admin',
             phone: '(11) 98888-1111',
-            avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+            avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
             status: 'working',
             password: '123456',
-            isTemporaryPassword: false
+            isTemporaryPassword: false,
+            gender: 'male'
           });
         }
         
@@ -550,10 +552,11 @@ async function initDatabase() {
           email: 'antonioclaudiofp@gmail.com',
           role: 'admin',
           phone: '(11) 98888-1111',
-          avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+          avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
           status: 'working',
           password: '123456',
-          isTemporaryPassword: false
+          isTemporaryPassword: false,
+          gender: 'male'
         });
         fs.writeFileSync(DATA_FILE, JSON.stringify(memoryDB, null, 2), 'utf-8');
       }
@@ -1062,18 +1065,18 @@ app.post('/api/login', (req, res) => {
   }
 
   // Set status to idle (online) upon login and update lastLocationUpdate timestamp
-  if (user.role === 'employee') {
+  if (user.status === 'offline' || !user.status) {
     user.status = 'idle';
-    user.lastLocationUpdate = new Date().toISOString();
-    const uIdx = db.users.findIndex(u => u.id === user.id);
-    if (uIdx > -1) {
-      db.users[uIdx] = user;
-    }
-    saveDB(db);
-    saveUserToFirestore(user).catch(err => {
-      console.error('Failed to sync login status to Firestore:', err);
-    });
   }
+  user.lastLocationUpdate = new Date().toISOString();
+  const uIdx = db.users.findIndex(u => u.id === user.id);
+  if (uIdx > -1) {
+    db.users[uIdx] = user;
+  }
+  saveDB(db);
+  saveUserToFirestore(user).catch(err => {
+    console.error('Failed to sync login status to Firestore:', err);
+  });
 
   res.json({ success: true, user });
 });
