@@ -1386,21 +1386,47 @@ export default function ClientDashboard({
                     </span>
                   </div>
 
-                  {/* SLIDER WITH RANGE LABELS */}
-                  <div className="space-y-2 pt-1">
+                  {/* SLIDER WITH RANGE LABELS AND REGUA DE METRAGEM */}
+                  <div className="space-y-3 pt-1">
                     <input
                       type="range"
                       min="20"
                       max="300"
                       step="5"
                       value={m2Size}
-                      onChange={(e) => setM2Size(Number(e.target.value))}
+                      onChange={(e) => {
+                        const val = Number(e.target.value);
+                        setM2Size(val);
+                        setAllocatedStaff(getRecommendedStaff(val));
+                      }}
                       className="w-full h-2.5 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-emerald-600"
                     />
-                    <div className="flex justify-between text-[10px] font-bold text-slate-400 font-mono">
-                      <span>20 m²</span>
-                      <span>150 m²</span>
-                      <span>300 m²</span>
+                    {/* Régua de Metragem com subdivisões em m² */}
+                    <div className="relative w-full h-7 select-none">
+                      {[20, 50, 100, 150, 200, 250, 300].map((val) => {
+                        const pct = ((val - 20) / (300 - 20)) * 100;
+                        const isSelected = Math.abs(m2Size - val) < 15;
+                        const transform = val === 20 ? 'none' : val === 300 ? 'translateX(-100%)' : 'translateX(-50%)';
+                        return (
+                          <button
+                            key={val}
+                            type="button"
+                            onClick={() => {
+                              setM2Size(val);
+                              setAllocatedStaff(getRecommendedStaff(val));
+                            }}
+                            style={{ left: `${pct}%`, transform }}
+                            className={`absolute top-0 flex flex-col items-center gap-0.5 transition-all cursor-pointer group ${
+                              isSelected ? 'text-emerald-700 font-black z-10' : 'text-slate-400 font-medium hover:text-slate-700'
+                            }`}
+                          >
+                            <span className={`w-0.5 rounded-full transition-all ${
+                              isSelected ? 'bg-emerald-600 h-2.5' : 'bg-slate-300 h-1.5 group-hover:bg-slate-400'
+                            }`} />
+                            <span className="text-[9px] font-mono whitespace-nowrap">{val} m²</span>
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
 
