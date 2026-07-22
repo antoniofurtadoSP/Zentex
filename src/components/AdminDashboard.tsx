@@ -6,7 +6,8 @@ import ZentexChat from './ZentexChat';
 import { 
   Plus, Users, ClipboardList, Map, MessageSquare, Clock, ShieldCheck, 
   TrendingUp, CheckCircle, AlertTriangle, Play, HelpCircle, Phone, 
-  MapPin, Eye, Calendar, UserPlus, RefreshCcw, Download, Upload, Image, X, Trash2
+  MapPin, Eye, Calendar, UserPlus, RefreshCcw, Download, Upload, Image, X, Trash2,
+  UserCheck
 } from 'lucide-react';
 
 interface AdminDashboardProps {
@@ -245,6 +246,7 @@ export default function AdminDashboard({
   const workingEmployees = users.filter(u => u.role === 'employee' && u.status === 'working').length;
   const idleEmployees = users.filter(u => u.role === 'employee' && u.status === 'idle').length;
   const offlineEmployees = users.filter(u => u.role === 'employee' && u.status === 'offline').length;
+  const totalClients = users.filter(u => u.role === 'client').length;
 
   const unreadClientMessages = messages.filter(m => 
     m.senderRole === 'client' && 
@@ -289,78 +291,122 @@ export default function AdminDashboard({
       )}
       
       {/* Metrics Banner */}
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
-        {/* Metric 1 */}
-        <div className="bg-gradient-to-b from-white to-slate-50 border border-slate-200 border-b-4 border-b-indigo-500/60 rounded-2xl p-4 flex items-center gap-4 shadow-3d-md hover:scale-102 transition-all duration-200 cursor-default">
-          <div className="p-3 bg-indigo-50 text-indigo-700 rounded-xl shadow-3d-sm border border-indigo-100/30">
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 sm:gap-4">
+        {/* Metric 1 - Ordens Ativas */}
+        <button
+          onClick={() => setActiveTab('orders')}
+          className="text-left bg-gradient-to-b from-white to-slate-50 border border-slate-200 border-b-4 border-b-indigo-500/60 rounded-2xl p-3.5 sm:p-4 flex items-center gap-3 shadow-3d-md hover:scale-[1.02] hover:border-indigo-300 hover:shadow-lg active:scale-95 transition-all duration-200 cursor-pointer group"
+          title="Clique para ir para Ordens de Serviço"
+        >
+          <div className="p-2.5 sm:p-3 bg-indigo-50 text-indigo-700 group-hover:bg-indigo-600 group-hover:text-white rounded-xl shadow-3d-sm border border-indigo-100/30 transition-colors shrink-0">
             <ClipboardList className="w-5 h-5" />
           </div>
-          <div>
-            <p className="text-[10px] text-slate-500 uppercase font-semibold">Ordens Ativas</p>
-            <div className="flex items-baseline gap-1.5 mt-0.5">
-              <span className="text-xl font-black text-slate-900">{activeOrders}</span>
+          <div className="min-w-0">
+            <p className="text-[10px] text-slate-500 uppercase font-semibold truncate">Ordens Ativas</p>
+            <div className="flex items-baseline gap-1 mt-0.5 flex-wrap">
+              <span className="text-lg sm:text-xl font-black text-slate-900">{activeOrders}</span>
               <span className="text-[10px] text-emerald-600 font-mono font-bold">+{pendingOrders} abertas</span>
             </div>
           </div>
-        </div>
- 
-        {/* Metric 2 */}
-        <div className="bg-gradient-to-b from-white to-slate-50 border border-slate-200 border-b-4 border-b-emerald-600/60 rounded-2xl p-4 flex items-center gap-4 shadow-3d-md hover:scale-102 transition-all duration-200 cursor-default">
-          <div className="p-3 bg-emerald-50 text-emerald-700 rounded-xl shadow-3d-sm border border-emerald-100/30">
+        </button>
+
+        {/* Metric 2 - Técnicos em Campo */}
+        <button
+          onClick={() => {
+            setActiveTab('employees');
+            setRoleFilter('employee');
+          }}
+          className="text-left bg-gradient-to-b from-white to-slate-50 border border-slate-200 border-b-4 border-b-emerald-600/60 rounded-2xl p-3.5 sm:p-4 flex items-center gap-3 shadow-3d-md hover:scale-[1.02] hover:border-emerald-300 hover:shadow-lg active:scale-95 transition-all duration-200 cursor-pointer group"
+          title="Clique para ver Equipe de Técnicos"
+        >
+          <div className="p-2.5 sm:p-3 bg-emerald-50 text-emerald-700 group-hover:bg-emerald-600 group-hover:text-white rounded-xl shadow-3d-sm border border-emerald-100/30 transition-colors shrink-0">
             <Users className="w-5 h-5" />
           </div>
-          <div>
-            <p className="text-[10px] text-slate-500 uppercase font-semibold">Técnicos em Campo</p>
-            <div className="flex items-baseline gap-1.5 mt-0.5">
-              <span className="text-xl font-black text-slate-900">{workingEmployees + idleEmployees}</span>
-              <span className="text-[10px] text-emerald-600 font-mono font-bold">/{totalEmployees} cadastrados</span>
+          <div className="min-w-0">
+            <p className="text-[10px] text-slate-500 uppercase font-semibold truncate">Técnicos em Campo</p>
+            <div className="flex items-baseline gap-1 mt-0.5 flex-wrap">
+              <span className="text-lg sm:text-xl font-black text-slate-900">{workingEmployees + idleEmployees}</span>
+              <span className="text-[10px] text-emerald-600 font-mono font-bold">/{totalEmployees} cad.</span>
             </div>
           </div>
-        </div>
- 
-        {/* Metric 3 */}
-        <div className="bg-gradient-to-b from-white to-slate-50 border border-slate-200 border-b-4 border-b-teal-500/60 rounded-2xl p-4 flex items-center gap-4 shadow-3d-md hover:scale-102 transition-all duration-200 cursor-default">
-          <div className="p-3 bg-teal-50 text-teal-700 rounded-xl shadow-3d-sm border border-teal-100/30">
+        </button>
+
+        {/* Metric 3 - OS Concluídas */}
+        <button
+          onClick={() => setActiveTab('orders')}
+          className="text-left bg-gradient-to-b from-white to-slate-50 border border-slate-200 border-b-4 border-b-teal-500/60 rounded-2xl p-3.5 sm:p-4 flex items-center gap-3 shadow-3d-md hover:scale-[1.02] hover:border-teal-300 hover:shadow-lg active:scale-95 transition-all duration-200 cursor-pointer group"
+          title="Clique para ir para Ordens de Serviço"
+        >
+          <div className="p-2.5 sm:p-3 bg-teal-50 text-teal-700 group-hover:bg-teal-600 group-hover:text-white rounded-xl shadow-3d-sm border border-teal-100/30 transition-colors shrink-0">
             <CheckCircle className="w-5 h-5" />
           </div>
-          <div>
-            <p className="text-[10px] text-slate-500 uppercase font-semibold">OS Concluídas</p>
-            <div className="flex items-baseline gap-1.5 mt-0.5">
-              <span className="text-xl font-black text-slate-900">{completedOrders}</span>
+          <div className="min-w-0">
+            <p className="text-[10px] text-slate-500 uppercase font-semibold truncate">OS Concluídas</p>
+            <div className="flex items-baseline gap-1 mt-0.5 flex-wrap">
+              <span className="text-lg sm:text-xl font-black text-slate-900">{completedOrders}</span>
               <span className="text-[10px] text-slate-500 font-mono font-semibold">Este mês</span>
             </div>
           </div>
-        </div>
- 
-        {/* Metric 4 */}
-        <div className="bg-gradient-to-b from-white to-slate-50 border border-slate-200 border-b-4 border-b-amber-500/60 rounded-2xl p-4 flex items-center gap-4 shadow-3d-md hover:scale-102 transition-all duration-200 cursor-default">
-          <div className="p-3 bg-amber-50 text-amber-700 rounded-xl shadow-3d-sm border border-amber-100/30">
+        </button>
+
+        {/* Metric 4 - Pontos Batidos */}
+        <button
+          onClick={() => setActiveTab('timecards')}
+          className="text-left bg-gradient-to-b from-white to-slate-50 border border-slate-200 border-b-4 border-b-amber-500/60 rounded-2xl p-3.5 sm:p-4 flex items-center gap-3 shadow-3d-md hover:scale-[1.02] hover:border-amber-300 hover:shadow-lg active:scale-95 transition-all duration-200 cursor-pointer group"
+          title="Clique para ir para Registros de Ponto"
+        >
+          <div className="p-2.5 sm:p-3 bg-amber-50 text-amber-700 group-hover:bg-amber-600 group-hover:text-white rounded-xl shadow-3d-sm border border-amber-100/30 transition-colors shrink-0">
             <Clock className="w-5 h-5" />
           </div>
-          <div>
-            <p className="text-[10px] text-slate-500 uppercase font-semibold">Pontos Batidos</p>
-            <div className="flex items-baseline gap-1.5 mt-0.5">
-              <span className="text-xl font-black text-slate-900">{timecards.length}</span>
+          <div className="min-w-0">
+            <p className="text-[10px] text-slate-500 uppercase font-semibold truncate">Pontos Batidos</p>
+            <div className="flex items-baseline gap-1 mt-0.5 flex-wrap">
+              <span className="text-lg sm:text-xl font-black text-slate-900">{timecards.length}</span>
               <span className="text-[10px] text-amber-600 font-mono font-bold">Hoje</span>
             </div>
           </div>
-        </div>
+        </button>
 
         {/* Metric 5 - Financial Billing */}
-        <div className="bg-gradient-to-b from-white to-slate-50 border border-slate-200 border-b-4 border-b-emerald-500 rounded-2xl p-4 flex items-center gap-4 shadow-3d-md hover:scale-102 transition-all duration-200 cursor-default">
-          <div className="p-3 bg-emerald-50 text-emerald-800 rounded-xl shadow-3d-sm border border-emerald-100/30">
+        <button
+          onClick={() => setActiveTab('orders')}
+          className="text-left bg-gradient-to-b from-white to-slate-50 border border-slate-200 border-b-4 border-b-emerald-500 rounded-2xl p-3.5 sm:p-4 flex items-center gap-3 shadow-3d-md hover:scale-[1.02] hover:border-emerald-300 hover:shadow-lg active:scale-95 transition-all duration-200 cursor-pointer group"
+          title="Clique para ir para Faturamento e Ordens"
+        >
+          <div className="p-2.5 sm:p-3 bg-emerald-50 text-emerald-800 group-hover:bg-emerald-600 group-hover:text-white rounded-xl shadow-3d-sm border border-emerald-100/30 transition-colors shrink-0">
             <TrendingUp className="w-5 h-5" />
           </div>
-          <div>
-            <p className="text-[10px] text-slate-500 uppercase font-semibold">Faturamento Líquido</p>
-            <div className="flex items-baseline gap-1.5 mt-0.5">
-              <span className="text-lg font-black text-slate-900 font-mono">
+          <div className="min-w-0">
+            <p className="text-[10px] text-slate-500 uppercase font-semibold truncate">Faturamento Líquido</p>
+            <div className="flex items-baseline gap-1 mt-0.5 flex-wrap">
+              <span className="text-base sm:text-lg font-black text-slate-900 font-mono truncate">
                 R$ {totalBilling.toFixed(2).replace('.', ',')}
               </span>
               <span className="text-[8px] bg-emerald-100 text-emerald-800 font-extrabold px-1.5 py-0.5 rounded-full font-mono">PAID</span>
             </div>
           </div>
-        </div>
+        </button>
+
+        {/* Metric 6 - Clientes */}
+        <button
+          onClick={() => {
+            setActiveTab('employees');
+            setRoleFilter('client');
+          }}
+          className="text-left bg-gradient-to-b from-white to-slate-50 border border-slate-200 border-b-4 border-b-blue-500/60 rounded-2xl p-3.5 sm:p-4 flex items-center gap-3 shadow-3d-md hover:scale-[1.02] hover:border-blue-300 hover:shadow-lg active:scale-95 transition-all duration-200 cursor-pointer group"
+          title="Clique para ver Lista de Clientes"
+        >
+          <div className="p-2.5 sm:p-3 bg-blue-50 text-blue-700 group-hover:bg-blue-600 group-hover:text-white rounded-xl shadow-3d-sm border border-blue-100/30 transition-colors shrink-0">
+            <UserCheck className="w-5 h-5" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-[10px] text-slate-500 uppercase font-semibold truncate">Clientes</p>
+            <div className="flex items-baseline gap-1 mt-0.5 flex-wrap">
+              <span className="text-lg sm:text-xl font-black text-slate-900">{totalClients}</span>
+              <span className="text-[10px] text-blue-600 font-mono font-bold">cadastrados</span>
+            </div>
+          </div>
+        </button>
       </div>
 
       {/* Navigation Sub-Header */}
