@@ -7,7 +7,7 @@ import {
   Plus, Users, ClipboardList, Map, MessageSquare, Clock, ShieldCheck, 
   TrendingUp, CheckCircle, AlertTriangle, Play, HelpCircle, Phone, 
   MapPin, Eye, Calendar, UserPlus, RefreshCcw, Download, Upload, Image, X, Trash2,
-  UserCheck
+  UserCheck, Receipt, CreditCard, DollarSign, FileText, Search, Check, RefreshCw
 } from 'lucide-react';
 
 interface AdminDashboardProps {
@@ -41,10 +41,15 @@ export default function AdminDashboard({
   onRefreshData,
   onResetDB
 }: AdminDashboardProps) {
-  const [activeTab, setActiveTab] = useState<'overview' | 'orders' | 'employees' | 'map' | 'chat' | 'timecards'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'orders' | 'employees' | 'map' | 'chat' | 'timecards' | 'billing'>('overview');
   const [roleFilter, setRoleFilter] = useState<'all' | 'admin' | 'employee' | 'client'>('all');
   const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
   const [confirmReset, setConfirmReset] = useState(false);
+
+  // Billing tab states
+  const [billingStatusFilter, setBillingStatusFilter] = useState<'all' | 'pago' | 'pendente' | 'reembolsado'>('all');
+  const [billingMethodFilter, setBillingMethodFilter] = useState<string>('all');
+  const [billingSearch, setBillingSearch] = useState('');
 
   const [lastViewedChatTime, setLastViewedChatTime] = useState<string>(() => {
     return localStorage.getItem('lastViewedChatTime') || new Date().toISOString();
@@ -254,9 +259,12 @@ export default function AdminDashboard({
   const unreadClientCount = unreadClientMessages.length;
 
   // Real-time corporate billing calculations
-  const totalBilling = orders
-    .filter(o => o.paymentStatus === 'pago')
-    .reduce((sum, o) => sum + (o.price || 0), 0);
+  const paidOrders = orders.filter(o => o.paymentStatus === 'pago');
+  const pendingOrdersList = orders.filter(o => o.paymentStatus === 'pendente' || !o.paymentStatus);
+  const totalBilling = paidOrders.reduce((sum, o) => sum + (o.price || 0), 0);
+  const pendingBilling = pendingOrdersList.reduce((sum, o) => sum + (o.price || 0), 0);
+  const totalInvoicesCount = orders.filter(o => (o.price && o.price > 0) || o.paymentStatus).length;
+  const averageTicket = paidOrders.length > 0 ? totalBilling / paidOrders.length : 0;
 
   return (
     <div className="space-y-6">
@@ -368,9 +376,9 @@ export default function AdminDashboard({
 
         {/* Metric 5 - Financial Billing */}
         <button
-          onClick={() => setActiveTab('orders')}
+          onClick={() => setActiveTab('billing')}
           className="text-left bg-gradient-to-b from-white to-slate-50 border border-slate-200 border-b-4 border-b-emerald-500 rounded-2xl p-3.5 sm:p-4 flex items-center gap-3 shadow-3d-md hover:scale-[1.02] hover:border-emerald-300 hover:shadow-lg active:scale-95 transition-all duration-200 cursor-pointer group"
-          title="Clique para ir para Faturamento e Ordens"
+          title="Clique para ir para Faturas & Pagamentos dos Clientes"
         >
           <div className="p-2.5 sm:p-3 bg-emerald-50 text-emerald-800 group-hover:bg-emerald-600 group-hover:text-white rounded-xl shadow-3d-sm border border-emerald-100/30 transition-colors shrink-0">
             <TrendingUp className="w-5 h-5" />
@@ -417,7 +425,8 @@ export default function AdminDashboard({
             { id: 'employees', label: 'Funcionários (Equipe)', icon: Users },
             { id: 'map', label: 'Mapa de Equipes', icon: Map },
             { id: 'chat', label: 'Atendimento & Chat', icon: MessageSquare },
-            { id: 'timecards', label: 'Registros de Ponto', icon: Clock }
+            { id: 'timecards', label: 'Registros de Ponto', icon: Clock },
+            { id: 'billing', label: 'Faturas & Pagamentos', icon: Receipt }
           ] as const).map(tab => (
             <button
               key={tab.id}
@@ -1270,6 +1279,344 @@ export default function AdminDashboard({
                   </tbody>
                 </table>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* TAB 7: BILLING & INVOICES (FATURAS E PAGAMENTOS) */}
+        {activeTab === 'billing' && (
+          <div className="space-y-6 animate-fade-in">
+            {/* Header & Export Banner */}
+            <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-emerald-950 border border-slate-700/60 rounded-2xl p-5 text-white shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="p-2 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-xl">
+                    <Receipt className="w-5 h-5" />
+                  </span>
+                  <h3 className="text-base font-black text-white tracking-tight">Faturamento e Gestão de Pagamentos</h3>
+                  <span className="text-[10px] bg-emerald-500 text-slate-950 font-black px-2 py-0.5 rounded-full uppercase tracking-wider">Ao Vivo</span>
+                </div>
+                <p className="text-xs text-slate-300">
+                  Visão consolidada de todos os recebimentos, cobranças pendentes e notas fiscais geradas para clientes.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => window.print()}
+                  className="px-3.5 py-2 bg-white/10 hover:bg-white/20 text-white border border-white/20 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer backdrop-blur-sm shadow-sm"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>Exportar Relatório PDF</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Financial KPI Summary Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* Card 1: Recebido */}
+              <div className="bg-gradient-to-b from-white to-slate-50 border border-slate-200 border-b-4 border-b-emerald-500 rounded-2xl p-4 shadow-sm flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] text-slate-500 font-extrabold uppercase tracking-wider">Total Pago (Confirmado)</p>
+                  <p className="text-xl font-black text-slate-900 font-mono mt-1">
+                    R$ {totalBilling.toFixed(2).replace('.', ',')}
+                  </p>
+                  <span className="inline-block mt-1 text-[10px] text-emerald-600 font-bold bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-100">
+                    {paidOrders.length} {paidOrders.length === 1 ? 'pagamento' : 'pagamentos'}
+                  </span>
+                </div>
+                <div className="p-3 bg-emerald-100 text-emerald-700 rounded-2xl border border-emerald-200/50">
+                  <TrendingUp className="w-6 h-6" />
+                </div>
+              </div>
+
+              {/* Card 2: A Receber */}
+              <div className="bg-gradient-to-b from-white to-slate-50 border border-slate-200 border-b-4 border-b-amber-500 rounded-2xl p-4 shadow-sm flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] text-slate-500 font-extrabold uppercase tracking-wider">A Receber (Pendente)</p>
+                  <p className="text-xl font-black text-slate-900 font-mono mt-1">
+                    R$ {pendingBilling.toFixed(2).replace('.', ',')}
+                  </p>
+                  <span className="inline-block mt-1 text-[10px] text-amber-700 font-bold bg-amber-50 px-2 py-0.5 rounded-md border border-amber-100">
+                    {pendingOrdersList.length} {pendingOrdersList.length === 1 ? 'fatura pendente' : 'faturas pendentes'}
+                  </span>
+                </div>
+                <div className="p-3 bg-amber-100 text-amber-700 rounded-2xl border border-amber-200/50">
+                  <Clock className="w-6 h-6" />
+                </div>
+              </div>
+
+              {/* Card 3: Total Faturas */}
+              <div className="bg-gradient-to-b from-white to-slate-50 border border-slate-200 border-b-4 border-b-blue-500 rounded-2xl p-4 shadow-sm flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] text-slate-500 font-extrabold uppercase tracking-wider">Faturas Geradas</p>
+                  <p className="text-xl font-black text-slate-900 mt-1">
+                    {totalInvoicesCount}
+                  </p>
+                  <span className="inline-block mt-1 text-[10px] text-blue-700 font-bold bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100">
+                    Ordens faturáveis
+                  </span>
+                </div>
+                <div className="p-3 bg-blue-100 text-blue-700 rounded-2xl border border-blue-200/50">
+                  <FileText className="w-6 h-6" />
+                </div>
+              </div>
+
+              {/* Card 4: Ticket Médio */}
+              <div className="bg-gradient-to-b from-white to-slate-50 border border-slate-200 border-b-4 border-b-indigo-500 rounded-2xl p-4 shadow-sm flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] text-slate-500 font-extrabold uppercase tracking-wider">Ticket Médio / OS</p>
+                  <p className="text-xl font-black text-slate-900 font-mono mt-1">
+                    R$ {averageTicket.toFixed(2).replace('.', ',')}
+                  </p>
+                  <span className="inline-block mt-1 text-[10px] text-indigo-700 font-bold bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100">
+                    Média por cliente
+                  </span>
+                </div>
+                <div className="p-3 bg-indigo-100 text-indigo-700 rounded-2xl border border-indigo-200/50">
+                  <DollarSign className="w-6 h-6" />
+                </div>
+              </div>
+            </div>
+
+            {/* Filter & Search Toolbar */}
+            <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex flex-col md:flex-row gap-3 items-center justify-between">
+              <div className="relative w-full md:w-80">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="Buscar por cliente, serviço ou ID da OS..."
+                  value={billingSearch}
+                  onChange={(e) => setBillingSearch(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-emerald-500 focus:bg-white transition-all"
+                />
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+                <select
+                  value={billingStatusFilter}
+                  onChange={(e) => setBillingStatusFilter(e.target.value as any)}
+                  className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-700 font-bold focus:outline-none focus:border-emerald-500 cursor-pointer"
+                >
+                  <option value="all">Todos os Status</option>
+                  <option value="pago">Apenas Pagos</option>
+                  <option value="pendente">Apenas Pendentes</option>
+                  <option value="reembolsado">Apenas Reembolsados</option>
+                </select>
+
+                <select
+                  value={billingMethodFilter}
+                  onChange={(e) => setBillingMethodFilter(e.target.value)}
+                  className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-700 font-bold focus:outline-none focus:border-emerald-500 cursor-pointer"
+                >
+                  <option value="all">Todos os Métodos</option>
+                  <option value="pix">PIX</option>
+                  <option value="cartao_credito">Cartão de Crédito</option>
+                  <option value="cartao_debito">Cartão de Débito</option>
+                </select>
+
+                {(billingSearch || billingStatusFilter !== 'all' || billingMethodFilter !== 'all') && (
+                  <button
+                    onClick={() => {
+                      setBillingSearch('');
+                      setBillingStatusFilter('all');
+                      setBillingMethodFilter('all');
+                    }}
+                    className="px-2.5 py-2 text-xs text-rose-600 hover:text-rose-700 font-bold hover:bg-rose-50 border border-rose-100 rounded-xl transition-all cursor-pointer"
+                  >
+                    Limpar Filtros
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Invoices Table List */}
+            <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h4 className="text-sm font-black text-slate-900">Histórico de Pagamentos e Recebimentos</h4>
+                  <p className="text-xs text-slate-500">Transações financeiras vinculadas às ordens de serviço</p>
+                </div>
+                <span className="text-xs font-mono font-bold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-lg">
+                  {orders.filter(o => {
+                    const matchesSearch = !billingSearch.trim() || 
+                      o.clientName.toLowerCase().includes(billingSearch.toLowerCase()) ||
+                      o.title.toLowerCase().includes(billingSearch.toLowerCase()) ||
+                      o.id.toLowerCase().includes(billingSearch.toLowerCase());
+                    const currentStatus = o.paymentStatus || 'pendente';
+                    const matchesStatus = billingStatusFilter === 'all' || currentStatus === billingStatusFilter;
+                    const currentMethod = o.paymentMethod || 'outro';
+                    const matchesMethod = billingMethodFilter === 'all' || currentMethod === billingMethodFilter;
+                    return matchesSearch && matchesStatus && matchesMethod;
+                  }).length} registro(s) enc.
+                </span>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="border-b border-slate-200 text-slate-600 font-bold bg-slate-50">
+                      <th className="p-3">Fatura / OS</th>
+                      <th className="p-3">Cliente</th>
+                      <th className="p-3">Serviço Prestado</th>
+                      <th className="p-3">Data</th>
+                      <th className="p-3">Forma de Pagamento</th>
+                      <th className="p-3">Valor (R$)</th>
+                      <th className="p-3">Status</th>
+                      <th className="p-3 text-right">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {orders.filter(o => {
+                      const matchesSearch = !billingSearch.trim() || 
+                        o.clientName.toLowerCase().includes(billingSearch.toLowerCase()) ||
+                        o.title.toLowerCase().includes(billingSearch.toLowerCase()) ||
+                        o.id.toLowerCase().includes(billingSearch.toLowerCase());
+                      const currentStatus = o.paymentStatus || 'pendente';
+                      const matchesStatus = billingStatusFilter === 'all' || currentStatus === billingStatusFilter;
+                      const currentMethod = o.paymentMethod || 'outro';
+                      const matchesMethod = billingMethodFilter === 'all' || currentMethod === billingMethodFilter;
+                      return matchesSearch && matchesStatus && matchesMethod;
+                    }).length === 0 ? (
+                      <tr>
+                        <td colSpan={8} className="text-center py-12 text-slate-400">
+                          <Receipt className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+                          <p className="font-bold">Nenhum registro de fatura encontrado.</p>
+                          <p className="text-[11px] text-slate-400 mt-1">Tente ajustar os termos de busca ou filtros selecionados.</p>
+                        </td>
+                      </tr>
+                    ) : (
+                      orders.filter(o => {
+                        const matchesSearch = !billingSearch.trim() || 
+                          o.clientName.toLowerCase().includes(billingSearch.toLowerCase()) ||
+                          o.title.toLowerCase().includes(billingSearch.toLowerCase()) ||
+                          o.id.toLowerCase().includes(billingSearch.toLowerCase());
+                        const currentStatus = o.paymentStatus || 'pendente';
+                        const matchesStatus = billingStatusFilter === 'all' || currentStatus === billingStatusFilter;
+                        const currentMethod = o.paymentMethod || 'outro';
+                        const matchesMethod = billingMethodFilter === 'all' || currentMethod === billingMethodFilter;
+                        return matchesSearch && matchesStatus && matchesMethod;
+                      }).map(order => {
+                        const isPaid = order.paymentStatus === 'pago';
+                        const isPending = !order.paymentStatus || order.paymentStatus === 'pendente';
+                        const isRefunded = order.paymentStatus === 'reembolsado';
+
+                        return (
+                          <tr key={order.id} className="border-b border-slate-100 hover:bg-slate-50/80 transition-colors">
+                            <td className="p-3 font-mono font-bold text-slate-900">
+                              <button
+                                onClick={() => {
+                                  setSelectedOS(order);
+                                  setShowOSModal(true);
+                                }}
+                                className="text-emerald-700 hover:text-emerald-800 hover:underline flex items-center gap-1 cursor-pointer"
+                              >
+                                <span>#{order.id}</span>
+                              </button>
+                            </td>
+
+                            <td className="p-3">
+                              <p className="font-bold text-slate-800">{order.clientName}</p>
+                              {order.clientPhone && (
+                                <p className="text-[10px] text-slate-500 font-mono">{order.clientPhone}</p>
+                              )}
+                            </td>
+
+                            <td className="p-3">
+                              <p className="font-medium text-slate-800 truncate max-w-[200px]">{order.title}</p>
+                              <p className="text-[10px] text-slate-500">{order.clientAddress}</p>
+                            </td>
+
+                            <td className="p-3 font-mono text-[11px] text-slate-600 whitespace-nowrap">
+                              {order.paymentDate 
+                                ? new Date(order.paymentDate).toLocaleDateString('pt-BR') 
+                                : order.createdAt 
+                                  ? new Date(order.createdAt).toLocaleDateString('pt-BR')
+                                  : '-'}
+                            </td>
+
+                            <td className="p-3">
+                              <span className={`inline-flex items-center gap-1 text-[10px] font-extrabold px-2 py-0.5 rounded-md border ${
+                                order.paymentMethod === 'pix' 
+                                  ? 'bg-teal-50 text-teal-700 border-teal-200' 
+                                  : order.paymentMethod === 'cartao_credito'
+                                    ? 'bg-purple-50 text-purple-700 border-purple-200'
+                                    : order.paymentMethod === 'cartao_debito'
+                                      ? 'bg-blue-50 text-blue-700 border-blue-200'
+                                      : 'bg-slate-100 text-slate-600 border-slate-200'
+                              }`}>
+                                <CreditCard className="w-3 h-3" />
+                                <span>
+                                  {order.paymentMethod === 'pix' ? 'PIX' : 
+                                   order.paymentMethod === 'cartao_credito' ? 'Cartão Crédito' : 
+                                   order.paymentMethod === 'cartao_debito' ? 'Cartão Débito' : 'Boleto / Direto'}
+                                </span>
+                              </span>
+                            </td>
+
+                            <td className="p-3 font-mono font-black text-sm text-slate-900 whitespace-nowrap">
+                              R$ {(order.price || 0).toFixed(2).replace('.', ',')}
+                            </td>
+
+                            <td className="p-3 whitespace-nowrap">
+                              {isPaid && (
+                                <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-800 font-extrabold text-[10px] px-2.5 py-1 rounded-full border border-emerald-200 shadow-3d-sm">
+                                  <Check className="w-3 h-3 text-emerald-600" />
+                                  <span>CONFIRMADO</span>
+                                </span>
+                              )}
+                              {isPending && (
+                                <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-800 font-extrabold text-[10px] px-2.5 py-1 rounded-full border border-amber-200 shadow-3d-sm">
+                                  <Clock className="w-3 h-3 text-amber-600" />
+                                  <span>PENDENTE</span>
+                                </span>
+                              )}
+                              {isRefunded && (
+                                <span className="inline-flex items-center gap-1 bg-rose-100 text-rose-800 font-extrabold text-[10px] px-2.5 py-1 rounded-full border border-rose-200 shadow-3d-sm">
+                                  <AlertTriangle className="w-3 h-3 text-rose-600" />
+                                  <span>REEMBOLSADO</span>
+                                </span>
+                              )}
+                            </td>
+
+                            <td className="p-3 text-right whitespace-nowrap">
+                              <div className="flex items-center justify-end gap-1.5">
+                                {isPending && (
+                                  <button
+                                    onClick={() => {
+                                      onUpdateOrderStatus(order.id, order.status, { 
+                                        paymentStatus: 'pago', 
+                                        paymentMethod: order.paymentMethod || 'pix',
+                                        paymentDate: new Date().toISOString() 
+                                      });
+                                    }}
+                                    className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[10px] rounded-lg shadow-3d-btn-emerald active:translate-y-0.5 transition-all cursor-pointer flex items-center gap-1"
+                                    title="Aprovar/Dar baixa no pagamento da fatura"
+                                  >
+                                    <Check className="w-3 h-3" />
+                                    <span>Dar Baixa</span>
+                                  </button>
+                                )}
+
+                                <button
+                                  onClick={() => {
+                                    setSelectedOS(order);
+                                    setShowOSModal(true);
+                                  }}
+                                  className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-colors cursor-pointer"
+                                  title="Ver Detalhes da Ordem de Serviço"
+                                >
+                                  <Eye className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         )}
