@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { User, ServiceOrder, TimeCard, ChatMessage, OSPriority } from '../types';
-import { getAvatarUrl } from '../utils';
+import { getAvatarUrl, isValidCPF } from '../utils';
 import ZentexMap from './ZentexMap';
 import ZentexChat from './ZentexChat';
 import { 
@@ -1529,7 +1529,14 @@ export default function AdminDashboard({
                 </div>
 
                 <div>
-                  <label htmlFor="empDocumentInput" className="text-[10px] font-bold text-slate-500 uppercase">CPF ou RG</label>
+                  <div className="flex justify-between items-center">
+                    <label htmlFor="empDocumentInput" className="text-[10px] font-bold text-slate-500 uppercase">CPF ou RG</label>
+                    {empDocumentId && empDocumentId.replace(/\D/g, '').length === 11 && (
+                      <span className={`text-[9px] font-bold ${isValidCPF(empDocumentId) ? 'text-emerald-600' : 'text-rose-600'}`}>
+                        {isValidCPF(empDocumentId) ? '✓ CPF Válido' : '⚠ CPF Inválido'}
+                      </span>
+                    )}
+                  </div>
                   <input
                     id="empDocumentInput"
                     name="empDocument"
@@ -1538,7 +1545,13 @@ export default function AdminDashboard({
                     placeholder="Ex: 123.456.789-00"
                     value={empDocumentId}
                     onChange={(e) => setEmpDocumentId(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 mt-1 focus:outline-none focus:border-emerald-500 focus:bg-white transition-all"
+                    className={`w-full bg-slate-50 border rounded-lg px-3 py-2 text-xs text-slate-800 mt-1 focus:outline-none focus:bg-white transition-all ${
+                      empDocumentId && empDocumentId.replace(/\D/g, '').length === 11
+                        ? isValidCPF(empDocumentId)
+                          ? 'border-emerald-400 focus:border-emerald-500'
+                          : 'border-rose-300 focus:border-rose-500'
+                        : 'border-slate-200 focus:border-emerald-500'
+                    }`}
                   />
                 </div>
 

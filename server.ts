@@ -86,7 +86,7 @@ const DEFAULT_USERS: User[] = [
     email: 'antonio@zentex.com',
     role: 'admin',
     phone: '(11) 98888-1111',
-    avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+    avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
     status: 'working',
     password: '123456',
     isTemporaryPassword: false,
@@ -98,7 +98,7 @@ const DEFAULT_USERS: User[] = [
     email: 'antonioclaudiofp@gmail.com',
     role: 'admin',
     phone: '(11) 98888-1111',
-    avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+    avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
     status: 'working',
     password: '123456',
     isTemporaryPassword: false,
@@ -586,11 +586,25 @@ async function resetFirestore(): Promise<DB | null> {
     const seedChatIds = ['chat1', 'chat2', 'chat3', 'chat4', 'chat5'];
     const seedTimecardIds = ['tc1', 'tc2'];
 
-    const customUsers: User[] = [];
+    // Collect all existing users from Firestore, preserving any profile updates to seed users
+    const existingUsersMap = new Map<string, User>();
     usersSnap.forEach(doc => {
       const u = doc.data() as User;
-      if (!seedUserIds.includes(u.id)) {
-        customUsers.push(u);
+      existingUsersMap.set(u.id, u);
+    });
+
+    // Merge DEFAULT_USERS with existing Firestore state so updates aren't lost
+    const finalUsers: User[] = DEFAULT_USERS.map(defaultU => {
+      if (existingUsersMap.has(defaultU.id)) {
+        return { ...defaultU, ...existingUsersMap.get(defaultU.id) };
+      }
+      return defaultU;
+    });
+
+    // Add any custom users not in seedUserIds
+    existingUsersMap.forEach((u, id) => {
+      if (!seedUserIds.includes(id)) {
+        finalUsers.push(u);
       }
     });
 
@@ -628,7 +642,7 @@ async function resetFirestore(): Promise<DB | null> {
     }
 
     const mergedDB: DB = {
-      users: [...DEFAULT_USERS, ...customUsers],
+      users: finalUsers,
       orders: [...DEFAULT_ORDERS, ...customOrders],
       chats: [...DEFAULT_CHATS, ...customChats],
       timecards: [...DEFAULT_TIMECARDS, ...customTimecards]
@@ -650,7 +664,7 @@ async function resetFirestore(): Promise<DB | null> {
     });
     await batch.commit();
 
-    console.log(`Firestore reset finished. Preserved ${customUsers.length} custom users/clients and ${customOrders.length} custom orders.`);
+    console.log(`Firestore reset finished. Preserved ${finalUsers.length} users/clients and ${customOrders.length} custom orders.`);
     return mergedDB;
   } catch (err) {
     console.error('Failed to reset collections in Firestore preserving custom data:', err);

@@ -6,7 +6,7 @@ import {
   Zap, Home, Building, Check, CreditCard, Smartphone, Lock, Copy
 } from 'lucide-react';
 import { User as UserType, ServiceOrder, ChatMessage, OSPriority } from '../types';
-import { getAvatarUrl } from '../utils';
+import { getAvatarUrl, isValidCPF } from '../utils';
 
 interface ZentexService {
   id: string;

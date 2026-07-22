@@ -2,7 +2,7 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    // Global Safety Net
+    // Global Safety Net - Default Deny
     match /{document=**} {
       allow read, write: if false;
     }
@@ -16,37 +16,70 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
 
-    function isValidId(id) {
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    function isAdmin() {
+      return isSignedIn() && (
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'
+      );
     }
 
     // Collection: Users
     match /users/{userId} {
       allow get: if isSignedIn();
       allow list: if isSignedIn();
-      allow create, update: if isSignedIn() && isOwner(userId);
-      allow delete: if false; // Admin-only via Admin SDK
+      allow create, update: if isSignedIn() && (isOwner(userId) || isAdmin());
+      allow delete: if isAdmin();
     }
 
     // Collection: Service Orders
     match /orders/{orderId} {
-      allow read: if isSignedIn();
-      allow create, update: if isSignedIn();
-      allow delete: if false; // Admin-only via Admin SDK
+      allow read: if isSignedIn() && (
+        isAdmin() ||
+        resource.data.createdBy == request.auth.uid ||
+        (resource.data.clientId != null && resource.data.clientId == request.auth.uid) ||
+        (resource.data.assignedEmployeeId != null && resource.data.assignedEmployeeId == request.auth.uid)
+      );
+
+      allow create: if isSignedIn() && (
+        isAdmin() ||
+        request.resource.data.createdBy == request.auth.uid ||
+        (request.resource.data.clientId != null && request.resource.data.clientId == request.auth.uid)
+      );
+
+      allow update: if isSignedIn() && (
+        isAdmin() ||
+        resource.data.createdBy == request.auth.uid ||
+        (resource.data.clientId != null && resource.data.clientId == request.auth.uid) ||
+        (resource.data.assignedEmployeeId != null && resource.data.assignedEmployeeId == request.auth.uid)
+      );
+
+      allow delete: if isAdmin();
     }
 
     // Collection: Chat Messages
     match /chats/{chatId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn();
-      allow update, delete: if false;
+      allow read: if isSignedIn() && (
+        isAdmin() ||
+        resource.data.senderId == request.auth.uid ||
+        resource.data.receiverId == request.auth.uid
+      );
+      allow create: if isSignedIn() && (
+        isAdmin() ||
+        request.resource.data.senderId == request.auth.uid
+      );
+      allow update, delete: if isAdmin();
     }
 
     // Collection: Timecards
     match /timecards/{timecardId} {
-      allow read: if isSignedIn();
-      allow create, update: if isSignedIn();
-      allow delete: if false;
+      allow read: if isSignedIn() && (
+        isAdmin() ||
+        resource.data.employeeId == request.auth.uid
+      );
+      allow create, update: if isSignedIn() && (
+        isAdmin() ||
+        request.resource.data.employeeId == request.auth.uid
+      );
+      allow delete: if isAdmin();
     }
   }
 }

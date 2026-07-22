@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Lock, Mail, Key, Eye, EyeOff, Sparkles, User, Phone, MapPin, Smile, FileText } from 'lucide-react';
 import { User as UserType } from '../types';
 import ZentexLogo from './ZentexLogo';
+import { isValidCPF } from '../utils';
 
 interface ZentexAuthProps {
   onLogin: (email: string, password: string) => Promise<boolean>;
@@ -54,6 +55,10 @@ export default function ZentexAuth({
     e.preventDefault();
     if (!regName || !regEmail || !regPassword || !regAddress || !regPhone || !regDocumentId) {
       alert('Por favor, preencha todos os campos obrigatórios.');
+      return;
+    }
+    if (!isValidCPF(regDocumentId)) {
+      alert('O CPF informado é inválido. Por favor, verifique os dígitos digitados.');
       return;
     }
     if (regPassword.length < 6) {
